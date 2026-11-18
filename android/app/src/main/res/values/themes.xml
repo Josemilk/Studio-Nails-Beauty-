@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.StudioNails" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#F7F1EB</item>
+        <item name="android:navigationBarColor">#F7F1EB</item>
+        <item name="android:windowBackground">#F7F1EB</item>
+    </style>
+</resources>
