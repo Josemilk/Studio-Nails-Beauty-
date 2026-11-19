@@ -109,7 +109,7 @@ fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
     val monthShut = monthFuture.isNotEmpty() && monthFuture.all { isBlocked(book, it) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text("Citas", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
+        ScreenTitle("Citas") { vm.back() }
         Text(
             if (role == Role.client) "Elige un día y un horario libre." else "Toca un día para ver clientas o editar turnos.",
             color = Soft,
