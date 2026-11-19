@@ -21,7 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Message
@@ -262,8 +262,8 @@ private fun DayPanel(vm: StudioViewModel, day: String, serviceId: String?, role:
 
     Column(Modifier.padding(top = 18.dp)) {
         Row(Modifier.clickable { onClose("") }, verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Mes", tint = Soft)
-            Text(" Mes", color = Soft, fontFamily = Sans)
+            Icon(Icons.Outlined.Close, contentDescription = "Cerrar", tint = Accent)
+            Text(" Cerrar", color = Accent, fontFamily = Sans, fontWeight = FontWeight.Bold)
         }
         Text(headingDate(day).replaceFirstChar { it.uppercase() }, fontFamily = Display, fontSize = 28.sp, modifier = Modifier.padding(top = 8.dp))
         Text(
