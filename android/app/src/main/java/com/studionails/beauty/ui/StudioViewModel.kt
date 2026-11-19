@@ -33,13 +33,34 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var screen by mutableStateOf<Screen>(if (book.mode == null) Screen.Gate else Screen.Home)
         private set
+    private val backStack = mutableListOf<Screen>()
 
     init {
         Reminders.sync(app, book)
     }
 
     fun open(next: Screen) {
+        if (next == screen) return
+        val previousIndex = backStack.indexOfLast { it == next }
+        if (previousIndex >= 0) {
+            while (backStack.lastIndex >= previousIndex) backStack.removeAt(backStack.lastIndex)
+            screen = next
+            return
+        }
+        backStack.add(screen)
         screen = next
+    }
+
+    fun back(): Boolean {
+        if (backStack.isEmpty()) {
+            if (screen != Screen.Home && book.mode != null) {
+                screen = Screen.Home
+                return true
+            }
+            return false
+        }
+        screen = backStack.removeAt(backStack.lastIndex)
+        return true
     }
 
     fun commit(next: BookState) {
@@ -53,6 +74,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     fun choose(role: Role) {
         commit(book.copy(mode = role))
+        backStack.clear()
         screen = Screen.Home
     }
 }

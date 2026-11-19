@@ -2,11 +2,14 @@ package com.studionails.beauty.ui
 
 import android.Manifest
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +56,8 @@ import com.studionails.beauty.model.Services
 import com.studionails.beauty.model.appointmentMinutes
 import com.studionails.beauty.model.clockLabel
 import com.studionails.beauty.model.digits
+import com.studionails.beauty.model.deleteAppointment
+import com.studionails.beauty.model.deleteNotice
 import com.studionails.beauty.model.firedNotices
 import com.studionails.beauty.model.longDate
 import com.studionails.beauty.model.minutesToTime
@@ -69,6 +74,7 @@ import java.time.LocalDate
 @Composable
 fun StudioRoot(vm: StudioViewModel) {
     val screen = vm.screen
+    BackHandler(enabled = screen != Screen.Gate) { vm.back() }
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(vm.book.mode) {
         if (vm.book.mode != null && Build.VERSION.SDK_INT >= 33) {
@@ -136,6 +142,7 @@ private fun GateScreen(vm: StudioViewModel) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HomeScreen(vm: StudioViewModel) {
     val book = vm.book
@@ -143,7 +150,7 @@ private fun HomeScreen(vm: StudioViewModel) {
     var query by remember { mutableStateOf("") }
     val today = LocalDate.now()
     val now = System.currentTimeMillis()
-    val name = if (role == Role.client) book.clientName.trim().substringBefore(" ").ifBlank { "Ana" } else book.settings.ownerName
+    val name = if (role == Role.client) book.clientName.trim().substringBefore(" ") else book.settings.ownerName
     val q = query.trim().lowercase()
     val services = Services.filter { q.isEmpty() || it.name.lowercase().contains(q) }
     val cards = if (q.isEmpty()) services.take(2) else services
@@ -152,10 +159,11 @@ private fun HomeScreen(vm: StudioViewModel) {
     } else emptyList()
     val next = nextAppointment(book, now, role)
     val notice = firedNotices(book, role, now).firstOrNull { it.id !in book.readIds }
+    var pendingNoticeDelete by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp)) {
         Row(verticalAlignment = Alignment.Top) {
-            Text("Hola, $name 👋", style = androidx.compose.material3.MaterialTheme.typography.displayLarge, modifier = Modifier.weight(1f))
+            Text(if (name.isBlank()) "Hola 👋" else "Hola, $name 👋", style = androidx.compose.material3.MaterialTheme.typography.displayLarge, modifier = Modifier.weight(1f))
             IconAction(Icons.Outlined.Settings, "Ajustes") { vm.open(Screen.Settings) }
         }
         Text("¿Qué servicio necesitas hoy?", color = Soft, fontSize = 20.sp, fontFamily = Sans, modifier = Modifier.padding(top = 12.dp))
@@ -163,13 +171,22 @@ private fun HomeScreen(vm: StudioViewModel) {
         OutlinedSearch(query) { query = it }
         if (notice != null) {
             Column(
-                Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Peach).clickable { vm.open(Screen.Citas()) }.padding(16.dp),
+                Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Peach).combinedClickable(
+                    onClick = { vm.open(Screen.Citas()) },
+                    onLongClick = { pendingNoticeDelete = notice.id },
+                ).padding(16.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Notifications, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp))
                     Text("  ${notice.title}", fontWeight = FontWeight.SemiBold, fontFamily = Sans)
                 }
                 Text(notice.body, fontFamily = Sans, fontSize = 16.sp, modifier = Modifier.padding(top = 4.dp))
+                if (pendingNoticeDelete == notice.id) {
+                    Text("Eliminar notificación", modifier = Modifier.clickable {
+                        vm.commit(deleteNotice(vm.book, notice.id, role))
+                        pendingNoticeDelete = null
+                    }.padding(top = 8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
+                }
             }
         }
         Row(Modifier.padding(top = 28.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
@@ -188,7 +205,7 @@ private fun HomeScreen(vm: StudioViewModel) {
                 ) {
                     StudioPhoto(service.photo, Modifier.fillMaxWidth().height(96.dp))
                     Text(service.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.padding(top = 10.dp))
-                    Text("${service.minutesLabel} · $${service.price}", color = Soft, fontFamily = Sans, fontSize = 13.sp)
+                     
                 }
             }
         }
@@ -272,7 +289,7 @@ private fun ServicesScreen(vm: StudioViewModel) {
                     ) {
                         StudioPhoto(service.photo, Modifier.fillMaxWidth().height(96.dp))
                         Text(service.name, fontWeight = FontWeight.SemiBold, fontFamily = Sans, modifier = Modifier.padding(top = 8.dp))
-                        Text("${service.minutesLabel} · $${service.price}", color = Soft, fontSize = 13.sp, fontFamily = Sans)
+                         
                     }
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -281,19 +298,21 @@ private fun ServicesScreen(vm: StudioViewModel) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HistoryScreen(vm: StudioViewModel) {
     val book = vm.book
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
     val role = book.mode ?: Role.client
     val now = System.currentTimeMillis()
     val source = if (role == Role.client) book.appointments.filter { digits(it.phone) == digits(book.clientPhone) } else book.appointments
     val rows = source.filter { it.status == "cancelled" || stamp(it.date, it.time) + appointmentMinutes(book, it) * 60_000 < now }
         .sortedByDescending { stamp(it.date, it.time) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text("Historial", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
+        ScreenTitle("Historial") { vm.back() }
         if (rows.isEmpty()) Text("Todavía no hay citas pasadas.", color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 16.dp))
         rows.forEach { item ->
-            Column(Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(16.dp)) {
+            Column(Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(24.dp)).combinedClickable(onClick = {}, onLongClick = { pendingDelete = item.id }).padding(16.dp)) {
                 Text(serviceById(item.serviceId)?.name ?: "Cita", fontWeight = FontWeight.SemiBold, fontFamily = Sans, fontSize = 18.sp)
                 Text("${item.name} · ${longDate(item.date)} · ${clockLabel(item.time)}", color = Soft, fontFamily = Sans)
                 Text(
@@ -307,14 +326,14 @@ private fun HistoryScreen(vm: StudioViewModel) {
                     fontSize = 13.sp,
                     modifier = Modifier.padding(top = 4.dp),
                 )
+                if (pendingDelete == item.id) {
+                    Text("Eliminar registro", modifier = Modifier.clickable {
+                        vm.commit(deleteAppointment(vm.book, item.id))
+                        pendingDelete = null
+                    }.padding(top = 10.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
+                }
             }
         }
-        Text(
-            if (role == Role.client) "Entrar como manicura" else "Entrar como clienta",
-            modifier = Modifier.padding(top = 28.dp).clickable { vm.choose(if (role == Role.client) Role.manicurist else Role.client) },
-            color = Soft,
-            fontFamily = Sans,
-        )
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -346,12 +365,7 @@ private fun SettingsScreen(vm: StudioViewModel) {
             Spacer(Modifier.height(12.dp))
             GhostButton("Horario de la mesa") { vm.open(Screen.Hours) }
         }
-        Text(
-            if (role == Role.client) "Entrar como manicura" else "Entrar como clienta",
-            modifier = Modifier.padding(top = 28.dp).clickable { vm.choose(if (role == Role.client) Role.manicurist else Role.client) },
-            color = Soft,
-            fontFamily = Sans,
-        )
+
     }
 }
 

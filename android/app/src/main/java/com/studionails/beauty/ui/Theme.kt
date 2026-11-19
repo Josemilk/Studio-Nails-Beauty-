@@ -16,11 +16,11 @@ val Paper = Color(0xFFF7F1EB)
 val PaperDeep = Color(0xFFF3E6DC)
 val Card = Color(0xFFFBF6F1)
 val Ink = Color(0xFF6D4638)
-val Soft = Color(0xFFB48B7C)
-val Faint = Color(0xFFC9B3A6)
+val Soft = Color(0xFF8F5F50)
+val Faint = Color(0xFF9B7668)
 val Line = Color(0xFFEADFD6)
-val Accent = Color(0xFFC4816C)
-val Peach = Color(0xFFF3D5C6)
+val Accent = Color(0xFFAD624C)
+val Peach = Color(0xFFECC4B2)
 val OnAccent = Color(0xFFFFFAF7)
 
 val Display = FontFamily(Font(R.font.fraunces))
@@ -38,12 +38,12 @@ private val Scheme = lightColorScheme(
 )
 
 private val Type = Typography(
-    displayLarge = TextStyle(fontFamily = Display, fontWeight = FontWeight.Medium, fontSize = 48.sp, color = Ink),
-    headlineLarge = TextStyle(fontFamily = Display, fontWeight = FontWeight.Medium, fontSize = 36.sp, color = Ink),
-    headlineMedium = TextStyle(fontFamily = Display, fontWeight = FontWeight.Medium, fontSize = 28.sp, color = Ink),
+    displayLarge = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 48.sp, color = Ink),
+    headlineLarge = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 36.sp, color = Ink),
+    headlineMedium = TextStyle(fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = Ink),
     titleLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Ink),
-    bodyLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 18.sp, color = Ink),
-    bodyMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 16.sp, color = Ink),
+    bodyLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = Ink),
+    bodyMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = Ink),
     labelLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink),
 )
 
