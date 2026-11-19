@@ -120,7 +120,7 @@ fun normalizePhone(phone: String): String? {
     val raw = digits(phone)
     val local = when {
         raw.length == 8 -> raw
-        raw.length == 11 && raw.startsWith("53") -> raw.drop(2)
+        raw.length == 10 && raw.startsWith("53") -> raw.drop(2)
         else -> return null
     }
     return "53$local"
