@@ -53,8 +53,16 @@ jobs:
         working-directory: android
         run: |
           APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
-          keytool -printcert -jarfile "$APK" | tee /tmp/cert.txt
-          grep -q "13:1A:C8:4A:42:40:B0:AD:92:1C:A7:00:F0:DB:D9:98:4B:75:54:FB:99:F4:0F:96:C9:7F:08:E9:5C:AC:95:2A" /tmp/cert.txt
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          CERT_INFO=$("$APKSIGNER" verify --print-certs "$APK")
+          printf '%s\n' "$CERT_INFO"
+          ACTUAL=$(printf '%s\n' "$CERT_INFO" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          EXPECTED="131ac84a4240b0ad921ca700f0dbd9984b7554fb99f40f96c97f08e95cac952a"
+          test -n "$ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::La huella SHA-256 del certificado no coincide con la esperada."
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
