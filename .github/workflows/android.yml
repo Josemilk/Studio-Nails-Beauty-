@@ -1,6 +1,6 @@
 name: Android
 
-# Se lanza a mano: Actions → Android → Run workflow.
+# Se valida en cada pull request y push a main; también puede lanzarse manualmente.
 on:
   push:
     branches:
