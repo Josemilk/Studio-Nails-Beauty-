@@ -458,7 +458,7 @@ fun DetailScreen(vm: StudioViewModel, id: String, back: String) {
         Text(clockLabel(cita.time), fontFamily = Display, fontSize = 48.sp, modifier = Modifier.padding(top = 20.dp))
         Text(longDate(cita.date), fontFamily = Sans, fontSize = 18.sp)
         if (role == Role.manicurist) {
-            Text("${service?.name ?: "Cita"} · ${prettyPhone(cita.phone)} · $${service?.price ?: 0}", color = Soft, fontFamily = Sans)
+            Text("${service?.name ?: "Cita"} · ${prettyPhone(cita.phone)}", color = Soft, fontFamily = Sans)
             Spacer(Modifier.height(20.dp))
             ContactRow(Icons.Outlined.Phone, "Llamar") { openLink(context, Intent(Intent.ACTION_DIAL, Uri.parse("tel:+${dialNumber(cita.phone)}"))) }
             ContactRow(Icons.Outlined.Message, "Mensaje") {
