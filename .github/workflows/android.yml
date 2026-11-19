@@ -1,6 +1,6 @@
 name: Android
 
-# Se lanza a mano desde la pestaña Actions. No corre al subir cambios.
+# Se lanza a mano: Actions → Android → Run workflow.
 on:
   workflow_dispatch:
 
@@ -9,14 +9,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-      - name: Ensamblar APK de depuración
+
+      - name: Instalar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Preparar la firma
         working-directory: android
-        run: chmod +x ./gradlew && ./gradlew :app:assembleDebug
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          mkdir -p keystore
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > keystore/studio-nails-release.keystore
+          cat > keystore.properties << EOF
+          storeFile=keystore/studio-nails-release.keystore
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          EOF
+
+      - name: Compilar la APK firmada
+        working-directory: android
+        run: chmod +x ./gradlew && ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Comprobar el SHA-256
+        working-directory: android
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          keytool -printcert -jarfile "$APK" | tee /tmp/cert.txt
+          grep -q "13:1A:C8:4A:42:40:B0:AD:92:1C:A7:00:F0:DB:D9:98:4B:75:54:FB:99:F4:0F:96:C9:7F:08:E9:5C:AC:95:2A" /tmp/cert.txt
+
       - uses: actions/upload-artifact@v4
         with:
-          name: studio-nails-debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: studio-nails-1.0
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+Studio Nails & Beauty
+Paquete: com.studionails.beauty
+Alias: studio-nails
+Algoritmo: SHA256withRSA
+Validez: 2026-11-18 a 2054-04-05
+
+SHA-256:
+13:1A:C8:4A:42:40:B0:AD:92:1C:A7:00:F0:DB:D9:98:4B:75:54:FB:99:F4:0F:96:C9:7F:08:E9:5C:AC:95:2A

@@ -1,15 +1,20 @@
 # Studio Nails & Beauty
 
-Proyecto Android (Kotlin y Jetpack Compose) de la agenda del estudio.
+Proyecto Android (Kotlin y Jetpack Compose).
 
-Los datos de cada teléfono se quedan en ese teléfono. Esta subida es solo el código, todavía no hay APK compilada.
+La APK de release se firma siempre con la misma clave. Huella pública:
 
-## Compilar después
+```
+SHA-256: 13:1A:C8:4A:42:40:B0:AD:92:1C:A7:00:F0:DB:D9:98:4B:75:54:FB:99:F4:0F:96:C9:7F:08:E9:5C:AC:95:2A
+```
 
-En GitHub: **Actions → Android → Run workflow**.
-Eso arma la APK de depuración y la deja como artefacto. No corre solo al subir cambios.
+La clave privada no está en el repositorio. GitHub Actions la toma de los secretos del repo.
 
-También se puede abrir la carpeta `android` en Android Studio y usar **Build → Build APK(s)**.
+## Compilar
+
+Actions → **Android** → **Run workflow**.
+
+El artefacto `studio-nails-1.0` es la APK firmada. El job falla si el SHA-256 no coincide.
 
 - Paquete: `com.studionails.beauty`
 - Mínimo: Android 8
