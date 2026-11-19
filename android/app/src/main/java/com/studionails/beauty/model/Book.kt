@@ -13,7 +13,7 @@ enum class Role { manicurist, client }
 
 data class Settings(
     val code: String = "MESA",
-    val ownerName: String = "Ana",
+    val ownerName: String = "Manicura",
     val ownerPhone: String = "2145550100",
     val studioName: String = "Studio Nails & Beauty",
     val workDays: List<Int> = listOf(2, 3, 4, 5, 6),
@@ -95,11 +95,12 @@ data class BookState(
     val readIds: List<String> = emptyList(),
     val blocked: List<String> = emptyList(),
     val closedSlots: List<String> = emptyList(),
-    val clientName: String = "Elena Ruiz",
-    val clientPhone: String = "2145550148",
+    val clientName: String = "",
+    val clientPhone: String = "",
     val clients: List<StudioClient> = emptyList(),
     val tickets: List<WalletTicket> = emptyList(),
     val moves: List<WalletMove> = emptyList(),
+    val hiddenNoticeIds: List<String> = emptyList(),
 )
 
 private val Months = listOf(
@@ -442,7 +443,7 @@ fun noticesFor(state: BookState): List<Notice> {
             body = included.joinToString(" · ") { "${clockLabel(it.time)} ${it.name}" },
         )
     }
-    return notices
+    return notices.filterNot { it.id in state.hiddenNoticeIds }
 }
 
 fun firedNotices(state: BookState, role: Role, now: Long): List<Notice> {
@@ -488,6 +489,18 @@ fun addClient(state: BookState, name: String, phone: String): Result<BookState> 
 }
 
 fun removeClient(state: BookState, id: String) = state.copy(clients = state.clients.filter { it.id != id })
+
+fun deleteTicket(state: BookState, id: String): BookState =
+    state.copy(tickets = state.tickets.filterNot { it.id == id && it.usedAt == null })
+
+fun deleteMove(state: BookState, id: String): BookState =
+    state.copy(moves = state.moves.filterNot { it.id == id })
+
+fun deleteAppointment(state: BookState, id: String): BookState =
+    state.copy(appointments = state.appointments.filterNot { it.id == id }, readIds = state.readIds.filterNot { it.contains(id) }, hiddenNoticeIds = (state.hiddenNoticeIds + noticesFor(state).filter { it.appointmentId == id }.map { it.id }).distinct())
+
+fun deleteNotice(state: BookState, id: String): BookState =
+    state.copy(hiddenNoticeIds = (state.hiddenNoticeIds + id).distinct(), readIds = state.readIds.filterNot { it == id })
 
 fun createTicket(state: BookState, kind: String, cents: Int, phone: String, name: String, now: Long): Result<Pair<BookState, WalletTicket>> {
     if (cents <= 0) return Result.failure(IllegalArgumentException("Escribe un valor en dólares."))
@@ -536,56 +549,11 @@ fun whenLabel(at: Long, today: LocalDate): String {
     }
 }
 
-fun seed(now: LocalDateTime = LocalDateTime.now()): BookState {
-    val settings = Settings()
-    val zone = ZoneId.systemDefault()
-    val createdEarly = now.minusDays(1).withHour(9).withMinute(0).atZone(zone).toInstant().toEpochMilli()
-    fun nextWork(offset: Long): LocalDate {
-        var day = now.toLocalDate().plusDays(offset)
-        repeat(21) {
-            if (settings.workDays.contains(jsDay(day))) return day
-            day = day.plusDays(1)
-        }
-        return day
-    }
-    val soon = nextWork(1)
-    val later = nextWork(3)
-    val laterKey = if (dateKey(later) == dateKey(soon)) dateKey(nextWork(5)) else dateKey(later)
-    val appointments = mutableListOf(
-        Appointment("seed-elena-past", dateKey(now.toLocalDate().minusDays(1)), "15:00", "Elena Ruiz", "2145550148", "clasica", true, "booked", createdEarly - 24 * Hour),
-        Appointment("seed-elena-soon", dateKey(soon), "11:00", "Elena Ruiz", "2145550148", "clasica", false, "booked", createdEarly),
-        Appointment("seed-marisol-soon", dateKey(soon), "16:00", "Marisol Vega", "9725550172", "art", true, "booked", createdEarly),
-        Appointment("seed-elena-later", laterKey, "12:00", "Elena Ruiz", "2145550148", "cuidado", false, "booked", createdEarly),
-    )
-    if (settings.workDays.contains(jsDay(now.toLocalDate()))) {
-        val nowMin = now.hour * 60 + now.minute
-        val near = slotTimes(settings).minByOrNull { time ->
-            val delta = timeToMinutes(time) - nowMin
-            when {
-                delta in 15..100 -> delta
-                delta in -50..-5 -> 200 + abs(delta)
-                else -> Int.MAX_VALUE
-            }
-        }
-        if (near != null && timeToMinutes(near).let { delta ->
-                val d = delta - nowMin
-                d in 15..100 || d in -50..-5
-            }
-        ) {
-            appointments += Appointment("seed-elena-near", dateKey(now.toLocalDate()), near, "Elena Ruiz", "2145550148", "gel", false, "booked", createdEarly)
-        }
-    }
-    return BookState(
-        settings = settings,
-        appointments = appointments,
-        clientName = "Elena Ruiz",
-        clientPhone = "2145550148",
-        clients = listOf(
-            StudioClient("elena", "Elena Ruiz", "2145550148"),
-            StudioClient("marisol", "Marisol Vega", "9725550172"),
-        ),
-    )
-}
+fun seed(now: LocalDateTime = LocalDateTime.now()): BookState = BookState(
+    settings = Settings(ownerName = "Manicura"),
+    clientName = "",
+    clientPhone = "",
+)
 
 fun BookState.toJson(): String {
     fun role(value: Role?) = value?.name ?: ""
@@ -622,6 +590,7 @@ fun BookState.toJson(): String {
         }
     })
     root.put("readIds", JSONArray(readIds))
+    root.put("hiddenNoticeIds", JSONArray(hiddenNoticeIds))
     root.put("blocked", JSONArray(blocked))
     root.put("closedSlots", JSONArray(closedSlots))
     root.put("clients", JSONArray().apply {
@@ -663,7 +632,7 @@ fun parseBook(raw: String): BookState {
     val settingsJson = root.optJSONObject("settings") ?: JSONObject()
     val settings = Settings(
         code = settingsJson.optString("code", "MESA"),
-        ownerName = settingsJson.optString("ownerName", "Ana").ifBlank { "Ana" },
+        ownerName = settingsJson.optString("ownerName", "Manicura").ifBlank { "Manicura" },
         ownerPhone = settingsJson.optString("ownerPhone", ""),
         studioName = "Studio Nails & Beauty",
         workDays = settingsJson.optJSONArray("workDays")?.toIntList() ?: listOf(2, 3, 4, 5, 6),
@@ -689,15 +658,16 @@ fun parseBook(raw: String): BookState {
                 cancelledAt = item.optLong("cancelledAt").takeIf { it > 0 },
                 cancelledBy = item.optString("cancelledBy").toRole(),
             )
-        },
+        }.filterNot { it.id.startsWith("seed-") },
         readIds = root.optJSONArray("readIds").toStringList(),
+        hiddenNoticeIds = root.optJSONArray("hiddenNoticeIds").toStringList(),
         blocked = root.optJSONArray("blocked").toStringList(),
         closedSlots = root.optJSONArray("closedSlots").toStringList(),
-        clientName = root.optString("clientName", "Elena Ruiz"),
-        clientPhone = root.optString("clientPhone", "2145550148"),
+        clientName = root.optString("clientName", "").takeUnless { it == "Elena Ruiz" } ?: "",
+        clientPhone = root.optString("clientPhone", "").takeUnless { it == "2145550148" } ?: "",
         clients = root.optJSONArray("clients").toList { item ->
             StudioClient(item.getString("id"), item.optString("name"), digits(item.optString("phone")))
-        }.filter { it.name.isNotBlank() && it.phone.isNotBlank() },
+        }.filter { it.id !in setOf("elena", "marisol") && it.name.isNotBlank() && it.phone.isNotBlank() },
         tickets = root.optJSONArray("tickets").toList { item ->
             WalletTicket(
                 id = item.getString("id"),
