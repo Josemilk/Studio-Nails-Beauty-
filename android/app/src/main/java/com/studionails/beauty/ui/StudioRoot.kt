@@ -398,9 +398,9 @@ private fun HoursScreen(vm: StudioViewModel) {
             }
         }
         Spacer(Modifier.height(24.dp))
-        Stepper("Abre", minutesToTime(draft.startMin), starts, draft.startMin) { draft = draft.copy(startMin = it) }
-        Stepper("Cierra", minutesToTime(draft.endMin), ends, draft.endMin) { draft = draft.copy(endMin = it) }
-        Stepper("Cada cita", "${draft.slotMin} min", lengths, draft.slotMin) { draft = draft.copy(slotMin = it) }
+        Stepper("Abre", clockLabel(minutesToTime(draft.startMin)), starts, draft.startMin) { draft = draft.copy(startMin = it) }
+        Stepper("Cierra", clockLabel(minutesToTime(draft.endMin)), ends, draft.endMin) { draft = draft.copy(endMin = it) }
+        Stepper("Cada cita", durationLabel(draft.slotMin), lengths, draft.slotMin) { draft = draft.copy(slotMin = it) }
         Spacer(Modifier.height(28.dp))
         PrimaryButton("Guardar horario", enabled = valid) {
             vm.commit(vm.book.copy(settings = draft))
@@ -409,8 +409,7 @@ private fun HoursScreen(vm: StudioViewModel) {
     }
 }
 
-@Composable
-private fun Stepper(label: String, value: String, options: List<Int>, current: Int, onPick: (Int) -> Unit) {
+private fun durationLabel(minutes: Int): String = when {\n    minutes % 60 == 0 -> "${minutes / 60} h"\n    minutes > 60 -> "${minutes / 60} h ${minutes % 60} min"\n    else -> "$minutes min"\n}\n\n@Composable\nprivate fun Stepper(label: String, value: String, options: List<Int>, current: Int, onPick: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, fontFamily = Sans, fontSize = 18.sp)
         Row(verticalAlignment = Alignment.CenterVertically) {
