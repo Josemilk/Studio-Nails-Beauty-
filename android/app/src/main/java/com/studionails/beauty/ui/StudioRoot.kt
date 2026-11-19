@@ -299,14 +299,14 @@ private fun ServicesScreen(vm: StudioViewModel) {
 @Composable
 private fun HistoryScreen(vm: StudioViewModel) {
     val book = vm.book
-    var pendingDelete by remember { mutableStateOf<String?>(null)
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
     val role = book.mode ?: Role.client
     val now = System.currentTimeMillis()
     val source = if (role == Role.client) book.appointments.filter { digits(it.phone) == digits(book.clientPhone) } else book.appointments
     val rows = source.filter { it.status == "cancelled" || stamp(it.date, it.time) + appointmentMinutes(book, it) * 60_000 < now }
         .sortedByDescending { stamp(it.date, it.time) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text("Historial", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
+        ScreenTitle("Historial") { vm.back() }
         if (rows.isEmpty()) Text("Todavía no hay citas pasadas.", color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 16.dp))
         rows.forEach { item ->
             Column(Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(24.dp)).combinedClickable(onClick = {}, onLongClick = { pendingDelete = item.id }).padding(16.dp)) {
