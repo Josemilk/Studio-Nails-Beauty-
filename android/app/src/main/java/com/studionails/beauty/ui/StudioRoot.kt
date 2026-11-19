@@ -2,6 +2,7 @@ package com.studionails.beauty.ui
 
 import android.Manifest
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -69,6 +70,7 @@ import java.time.LocalDate
 @Composable
 fun StudioRoot(vm: StudioViewModel) {
     val screen = vm.screen
+    BackHandler(enabled = screen != Screen.Gate) { vm.back() }
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(vm.book.mode) {
         if (vm.book.mode != null && Build.VERSION.SDK_INT >= 33) {
@@ -340,12 +342,7 @@ private fun SettingsScreen(vm: StudioViewModel) {
             Spacer(Modifier.height(12.dp))
             GhostButton("Horario de la mesa") { vm.open(Screen.Hours) }
         }
-        Text(
-            if (role == Role.client) "Entrar como manicura" else "Entrar como clienta",
-            modifier = Modifier.padding(top = 28.dp).clickable { vm.choose(if (role == Role.client) Role.manicurist else Role.client) },
-            color = Soft,
-            fontFamily = Sans,
-        )
+
     }
 }
 
