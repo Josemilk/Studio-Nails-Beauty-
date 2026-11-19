@@ -125,7 +125,7 @@ fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
                 Text(notice.body, fontFamily = Sans)
                 if (pendingNoticeDelete == notice.id) {
                     Text("Eliminar notificación", modifier = Modifier.clickable {
-                        vm.commit(deleteNotice(vm.book, notice.id))
+                        vm.commit(deleteNotice(vm.book, notice.id, role))
                         pendingNoticeDelete = null
                     }.padding(top = 8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
                 }
