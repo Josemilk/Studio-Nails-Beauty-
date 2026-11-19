@@ -101,6 +101,7 @@ data class BookState(
     val tickets: List<WalletTicket> = emptyList(),
     val moves: List<WalletMove> = emptyList(),
     val hiddenNoticeIds: List<String> = emptyList(),
+    val hiddenMoveIds: List<String> = emptyList(),
 )
 
 private val Months = listOf(
@@ -443,7 +444,7 @@ fun noticesFor(state: BookState): List<Notice> {
             body = included.joinToString(" · ") { "${clockLabel(it.time)} ${it.name}" },
         )
     }
-    return notices.filterNot { it.id in state.hiddenNoticeIds }
+    return notices.filterNot { it.id in state.hiddenNoticeIds || "${it.role.name}:${it.id}" in state.hiddenNoticeIds }
 }
 
 fun firedNotices(state: BookState, role: Role, now: Long): List<Notice> {
@@ -467,7 +468,7 @@ fun balanceOf(state: BookState, phone: String): Int {
 }
 
 fun movesFor(state: BookState, phone: String? = null) = state.moves
-    .filter { phone == null || digits(it.phone) == digits(phone) }
+    .filter { it.id !in state.hiddenMoveIds && (phone == null || digits(it.phone) == digits(phone)) }
     .sortedByDescending { it.at }
 
 fun qrPayload(id: String) = "SNB:$id"
@@ -494,13 +495,13 @@ fun deleteTicket(state: BookState, id: String): BookState =
     state.copy(tickets = state.tickets.filterNot { it.id == id && it.usedAt == null })
 
 fun deleteMove(state: BookState, id: String): BookState =
-    state.copy(moves = state.moves.filterNot { it.id == id })
+    state.copy(hiddenMoveIds = (state.hiddenMoveIds + id).distinct())
 
 fun deleteAppointment(state: BookState, id: String): BookState =
-    state.copy(appointments = state.appointments.filterNot { it.id == id }, readIds = state.readIds.filterNot { it.contains(id) }, hiddenNoticeIds = (state.hiddenNoticeIds + noticesFor(state).filter { it.appointmentId == id }.map { it.id }).distinct())
+    state.copy(appointments = state.appointments.filterNot { it.id == id }, readIds = state.readIds.filterNot { it.contains(id) }, hiddenNoticeIds = (state.hiddenNoticeIds + noticesFor(state).filter { it.appointmentId == id }.map { "${it.role.name}:${it.id}" }).distinct())
 
-fun deleteNotice(state: BookState, id: String): BookState =
-    state.copy(hiddenNoticeIds = (state.hiddenNoticeIds + id).distinct(), readIds = state.readIds.filterNot { it == id })
+fun deleteNotice(state: BookState, id: String, role: Role): BookState =
+    state.copy(hiddenNoticeIds = (state.hiddenNoticeIds + "${role.name}:$id").distinct(), readIds = state.readIds.filterNot { it == id })
 
 fun createTicket(state: BookState, kind: String, cents: Int, phone: String, name: String, now: Long): Result<Pair<BookState, WalletTicket>> {
     if (cents <= 0) return Result.failure(IllegalArgumentException("Escribe un valor en dólares."))
@@ -591,6 +592,7 @@ fun BookState.toJson(): String {
     })
     root.put("readIds", JSONArray(readIds))
     root.put("hiddenNoticeIds", JSONArray(hiddenNoticeIds))
+    root.put("hiddenMoveIds", JSONArray(hiddenMoveIds))
     root.put("blocked", JSONArray(blocked))
     root.put("closedSlots", JSONArray(closedSlots))
     root.put("clients", JSONArray().apply {
@@ -661,6 +663,7 @@ fun parseBook(raw: String): BookState {
         }.filterNot { it.id.startsWith("seed-") },
         readIds = root.optJSONArray("readIds").toStringList(),
         hiddenNoticeIds = root.optJSONArray("hiddenNoticeIds").toStringList(),
+        hiddenMoveIds = root.optJSONArray("hiddenMoveIds").toStringList(),
         blocked = root.optJSONArray("blocked").toStringList(),
         closedSlots = root.optJSONArray("closedSlots").toStringList(),
         clientName = root.optString("clientName", "").takeUnless { it == "Elena Ruiz" } ?: "",
