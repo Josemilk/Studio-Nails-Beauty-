@@ -270,6 +270,7 @@ fun ScanScreen(vm: StudioViewModel, kind: String) {
                     setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                     setPrompt("Apunta al código")
                     setBeepEnabled(false)
+                    setOrientationLocked(true)
                 },
             )
         }
