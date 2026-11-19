@@ -148,7 +148,7 @@ private fun HomeScreen(vm: StudioViewModel) {
     var query by remember { mutableStateOf("") }
     val today = LocalDate.now()
     val now = System.currentTimeMillis()
-    val name = if (role == Role.client) book.clientName.trim().substringBefore(" ").ifBlank { "Ana" } else book.settings.ownerName
+    val name = if (role == Role.client) book.clientName.trim().substringBefore(" ") else book.settings.ownerName
     val q = query.trim().lowercase()
     val services = Services.filter { q.isEmpty() || it.name.lowercase().contains(q) }
     val cards = if (q.isEmpty()) services.take(2) else services
@@ -161,7 +161,7 @@ private fun HomeScreen(vm: StudioViewModel) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp)) {
         Row(verticalAlignment = Alignment.Top) {
-            Text("Hola, $name 👋", style = androidx.compose.material3.MaterialTheme.typography.displayLarge, modifier = Modifier.weight(1f))
+            Text(if (name.isBlank()) "Hola 👋" else "Hola, $name 👋", style = androidx.compose.material3.MaterialTheme.typography.displayLarge, modifier = Modifier.weight(1f))
             IconAction(Icons.Outlined.Settings, "Ajustes") { vm.open(Screen.Settings) }
         }
         Text("¿Qué servicio necesitas hoy?", color = Soft, fontSize = 20.sp, fontFamily = Sans, modifier = Modifier.padding(top = 12.dp))
