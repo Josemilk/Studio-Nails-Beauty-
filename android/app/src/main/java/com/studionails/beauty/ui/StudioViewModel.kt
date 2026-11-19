@@ -41,6 +41,12 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     fun open(next: Screen) {
         if (next == screen) return
+        val previousIndex = backStack.indexOfLast { it == next }
+        if (previousIndex >= 0) {
+            while (backStack.lastIndex >= previousIndex) backStack.removeAt(backStack.lastIndex)
+            screen = next
+            return
+        }
         backStack.add(screen)
         screen = next
     }
