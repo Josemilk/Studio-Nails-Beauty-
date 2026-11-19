@@ -188,7 +188,7 @@ private fun HomeScreen(vm: StudioViewModel) {
                 ) {
                     StudioPhoto(service.photo, Modifier.fillMaxWidth().height(96.dp))
                     Text(service.name, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.padding(top = 10.dp))
-                    Text("${service.minutesLabel} · $${service.price}", color = Soft, fontFamily = Sans, fontSize = 13.sp)
+                     
                 }
             }
         }
@@ -272,7 +272,7 @@ private fun ServicesScreen(vm: StudioViewModel) {
                     ) {
                         StudioPhoto(service.photo, Modifier.fillMaxWidth().height(96.dp))
                         Text(service.name, fontWeight = FontWeight.SemiBold, fontFamily = Sans, modifier = Modifier.padding(top = 8.dp))
-                        Text("${service.minutesLabel} · $${service.price}", color = Soft, fontSize = 13.sp, fontFamily = Sans)
+                         
                     }
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -309,12 +309,6 @@ private fun HistoryScreen(vm: StudioViewModel) {
                 )
             }
         }
-        Text(
-            if (role == Role.client) "Entrar como manicura" else "Entrar como clienta",
-            modifier = Modifier.padding(top = 28.dp).clickable { vm.choose(if (role == Role.client) Role.manicurist else Role.client) },
-            color = Soft,
-            fontFamily = Sans,
-        )
         Spacer(Modifier.height(24.dp))
     }
 }
