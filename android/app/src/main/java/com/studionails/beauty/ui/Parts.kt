@@ -109,13 +109,11 @@ fun GhostButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
 
 @Composable
 fun ScreenTitle(title: String, onBack: () -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = onBack)) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = androidx.compose.material3.MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
+        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
             Icon(Icons.Outlined.Close, contentDescription = "Cerrar", tint = Accent)
-            Text(" Cerrar", color = Accent, fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
-        Spacer(Modifier.height(8.dp))
-        Text(title, style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
     }
 }
 

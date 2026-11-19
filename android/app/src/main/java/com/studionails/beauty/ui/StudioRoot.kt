@@ -2,6 +2,9 @@ package com.studionails.beauty.ui
 
 import android.Manifest
 import android.os.Build
+import android.content.Intent
+import android.media.RingtoneManager
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -51,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.studionails.beauty.notify.Reminders
 import com.studionails.beauty.model.Role
 import com.studionails.beauty.model.Services
 import com.studionails.beauty.model.appointmentMinutes
@@ -342,9 +347,16 @@ private fun HistoryScreen(vm: StudioViewModel) {
 private fun SettingsScreen(vm: StudioViewModel) {
     val book = vm.book
     val role = book.mode ?: Role.client
+    val context = LocalContext.current
     var name by remember { mutableStateOf(if (role == Role.client) book.clientName else book.settings.ownerName) }
     var phone by remember { mutableStateOf(prettyPhone(if (role == Role.client) book.clientPhone else book.settings.ownerPhone)) }
     var error by remember { mutableStateOf("") }
+    val ringtonePicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val picked = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            Reminders.saveSound(context, picked)
+        }
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         ScreenTitle("Ajustes") { vm.open(Screen.Home) }
         Text("Este nombre es el que saluda en el inicio.", color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp))
@@ -361,11 +373,22 @@ private fun SettingsScreen(vm: StudioViewModel) {
                 vm.open(Screen.Home)
             }.onFailure { error = it.message ?: "No se pudo guardar." }
         }
+        Spacer(Modifier.height(12.dp))
+        GhostButton("Elegir tono de notificación") {
+            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Tono de notificación de citas")
+                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Reminders.selectedSound(context))
+            }
+            ringtonePicker.launch(intent)
+        }
+        Text("Tono actual: ${Reminders.soundName(context)}", color = Soft, fontFamily = Sans, fontSize = 14.sp)
         if (role == Role.manicurist) {
             Spacer(Modifier.height(12.dp))
             GhostButton("Horario de la mesa") { vm.open(Screen.Hours) }
         }
-
     }
 }
 
@@ -398,15 +421,21 @@ private fun HoursScreen(vm: StudioViewModel) {
             }
         }
         Spacer(Modifier.height(24.dp))
-        Stepper("Abre", minutesToTime(draft.startMin), starts, draft.startMin) { draft = draft.copy(startMin = it) }
-        Stepper("Cierra", minutesToTime(draft.endMin), ends, draft.endMin) { draft = draft.copy(endMin = it) }
-        Stepper("Cada cita", "${draft.slotMin} min", lengths, draft.slotMin) { draft = draft.copy(slotMin = it) }
+        Stepper("Abre", clockLabel(minutesToTime(draft.startMin)), starts, draft.startMin) { draft = draft.copy(startMin = it) }
+        Stepper("Cierra", clockLabel(minutesToTime(draft.endMin)), ends, draft.endMin) { draft = draft.copy(endMin = it) }
+        Stepper("Cada cita", durationLabel(draft.slotMin), lengths, draft.slotMin) { draft = draft.copy(slotMin = it) }
         Spacer(Modifier.height(28.dp))
         PrimaryButton("Guardar horario", enabled = valid) {
             vm.commit(vm.book.copy(settings = draft))
             vm.open(Screen.Settings)
         }
     }
+}
+
+private fun durationLabel(minutes: Int): String = when {
+    minutes % 60 == 0 -> "${minutes / 60} h"
+    minutes > 60 -> "${minutes / 60} h ${minutes % 60} min"
+    else -> "$minutes min"
 }
 
 @Composable
