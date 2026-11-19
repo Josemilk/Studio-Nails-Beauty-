@@ -72,8 +72,8 @@ fun WalletHome(vm: StudioViewModel) {
             Text("Saldo disponible", color = Soft, fontFamily = Sans, modifier = Modifier.padding(top = 28.dp))
             Text(formatMoney(balance), fontFamily = Display, fontSize = 56.sp)
             Row(Modifier.padding(top = 24.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PrimaryButton("Recargar", { vm.open(Screen.Scan("topup")) }, Modifier.weight(1f))
-                GhostButton("Pagar", { vm.open(Screen.Scan("charge")) }, Modifier.weight(1f))
+                PrimaryButton("Recargar", Modifier.weight(1f)) { vm.open(Screen.Scan("topup")) }
+                GhostButton("Pagar", Modifier.weight(1f)) { vm.open(Screen.Scan("charge")) }
             }
             MoveList("Movimientos", moves.map { it.kind to it }, today, "Todavía no hay recargas ni pagos.")
         }
@@ -84,8 +84,8 @@ fun WalletHome(vm: StudioViewModel) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("Billetera", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
         Row(Modifier.padding(top = 20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PrimaryButton("Recargar", { vm.open(Screen.Amount("topup")) }, Modifier.weight(1f))
-            GhostButton("Cobrar", { vm.open(Screen.Amount("charge")) }, Modifier.weight(1f))
+            PrimaryButton("Recargar", Modifier.weight(1f)) { vm.open(Screen.Amount("topup")) }
+            GhostButton("Cobrar", Modifier.weight(1f)) { vm.open(Screen.Amount("charge")) }
         }
         openTickets.forEach { ticket ->
             Row(
@@ -306,8 +306,8 @@ fun ClientScreen(vm: StudioViewModel, id: String) {
         Text("Saldo disponible", color = Soft, fontFamily = Sans, modifier = Modifier.padding(top = 20.dp))
         Text(formatMoney(balanceOf(book, client.phone)), fontFamily = Display, fontSize = 56.sp)
         Row(Modifier.padding(top = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PrimaryButton("Recargar", { vm.open(Screen.Amount("topup", client.id)) }, Modifier.weight(1f))
-            GhostButton("Cobrar", { vm.open(Screen.Amount("charge", client.id)) }, Modifier.weight(1f))
+            PrimaryButton("Recargar", Modifier.weight(1f)) { vm.open(Screen.Amount("topup", client.id)) }
+            GhostButton("Cobrar", Modifier.weight(1f)) { vm.open(Screen.Amount("charge", client.id)) }
         }
         MoveList("Movimientos", moves.map { it.kind to it }, LocalDate.now(), "Esta ficha todavía no tiene movimientos.")
         Spacer(Modifier.height(24.dp))
