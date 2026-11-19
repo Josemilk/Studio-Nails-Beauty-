@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,8 @@ import com.studionails.beauty.model.Role
 import com.studionails.beauty.model.addClient
 import com.studionails.beauty.model.balanceOf
 import com.studionails.beauty.model.createTicket
+import com.studionails.beauty.model.deleteMove
+import com.studionails.beauty.model.deleteTicket
 import com.studionails.beauty.model.digits
 import com.studionails.beauty.model.formatMoney
 import com.studionails.beauty.model.movesFor
@@ -64,6 +67,7 @@ fun WalletHome(vm: StudioViewModel) {
     val book = vm.book
     val role = book.mode ?: Role.client
     val today = LocalDate.now()
+    var pendingTicketDelete by remember { mutableStateOf<String?>(null) }
     if (role == Role.client) {
         val balance = balanceOf(book, book.clientPhone)
         val moves = movesFor(book, book.clientPhone).take(8)
@@ -75,7 +79,7 @@ fun WalletHome(vm: StudioViewModel) {
                 PrimaryButton("Recargar", Modifier.weight(1f)) { vm.open(Screen.Scan("topup")) }
                 GhostButton("Pagar", Modifier.weight(1f)) { vm.open(Screen.Scan("charge")) }
             }
-            MoveList("Movimientos", moves.map { it.kind to it }, today, "Todavía no hay recargas ni pagos.")
+            MoveList(vm, "Movimientos", moves.map { it.kind to it }, today, "Todavía no hay recargas ni pagos.")
         }
         return
     }
@@ -89,9 +93,10 @@ fun WalletHome(vm: StudioViewModel) {
         }
         openTickets.forEach { ticket ->
             Row(
-                Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).clickable {
-                    vm.open(Screen.Qr(ticket.id))
-                }.padding(14.dp),
+                Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).combinedClickable(
+                    onClick = { vm.open(Screen.Qr(ticket.id)) },
+                    onLongClick = { pendingTicketDelete = ticket.id },
+                ).padding(14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
@@ -99,6 +104,15 @@ fun WalletHome(vm: StudioViewModel) {
                     Text("${ticket.name.ifBlank { "Cualquier clienta" }} · ${ticket.id}", color = Soft, fontFamily = Sans, fontSize = 13.sp)
                 }
                 Text("Ver QR", fontWeight = FontWeight.SemiBold, fontFamily = Sans, fontSize = 13.sp)
+            }
+            if (pendingTicketDelete == ticket.id) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Text("Cancelar", modifier = Modifier.clickable { pendingTicketDelete = null }.padding(8.dp), color = Soft, fontFamily = Sans)
+                    Text("Eliminar QR", modifier = Modifier.clickable {
+                        vm.commit(deleteTicket(vm.book, ticket.id))
+                        pendingTicketDelete = null
+                    }.padding(8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
+                }
             }
         }
         Row(Modifier.padding(top = 28.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -124,18 +138,19 @@ fun WalletHome(vm: StudioViewModel) {
                 Text(formatMoney(balanceOf(book, client.phone)), fontFamily = Display, fontSize = 24.sp)
             }
         }
-        MoveList("Últimos movimientos", moves.map { it.kind to it }, today, "Cuando una clienta escanee un código, queda aquí.")
+        MoveList(vm, "Últimos movimientos", moves.map { it.kind to it }, today, "Cuando una clienta escanee un código, queda aquí.")
         Spacer(Modifier.height(12.dp))
     }
 }
 
 @Composable
-private fun MoveList(title: String, rows: List<Pair<String, com.studionails.beauty.model.WalletMove>>, today: LocalDate, empty: String) {
+private fun MoveList(vm: StudioViewModel, title: String, rows: List<Pair<String, com.studionails.beauty.model.WalletMove>>, today: LocalDate, empty: String) {
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
     Text(title, fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 22.sp, modifier = Modifier.padding(top = 28.dp).fillMaxWidth())
     if (rows.isEmpty()) Text(empty, color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp))
     rows.forEach { (_, move) ->
         Row(
-            Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp),
+            Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).combinedClickable(onClick = {}, onLongClick = { pendingDelete = move.id }).padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column {
@@ -143,6 +158,15 @@ private fun MoveList(title: String, rows: List<Pair<String, com.studionails.beau
                 Text(whenLabel(move.at, today), color = Soft, fontFamily = Sans, fontSize = 13.sp)
             }
             Text("${if (move.kind == "topup") "+" else "−"}${formatMoney(move.cents)}", fontFamily = Display, fontSize = 20.sp)
+        }
+        if (pendingDelete == move.id) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text("Cancelar", modifier = Modifier.clickable { pendingDelete = null }.padding(8.dp), color = Soft, fontFamily = Sans)
+                Text("Eliminar", modifier = Modifier.clickable {
+                    vm.commit(deleteMove(vm.book, move.id))
+                    pendingDelete = null
+                }.padding(8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
+            }
         }
     }
 }
@@ -310,7 +334,7 @@ fun ClientScreen(vm: StudioViewModel, id: String) {
             PrimaryButton("Recargar", Modifier.weight(1f)) { vm.open(Screen.Amount("topup", client.id)) }
             GhostButton("Cobrar", Modifier.weight(1f)) { vm.open(Screen.Amount("charge", client.id)) }
         }
-        MoveList("Movimientos", moves.map { it.kind to it }, LocalDate.now(), "Esta ficha todavía no tiene movimientos.")
+        MoveList(vm, "Movimientos", moves.map { it.kind to it }, LocalDate.now(), "Esta ficha todavía no tiene movimientos.")
         Spacer(Modifier.height(24.dp))
         if (confirming) {
             ButtonInk("Confirmar y eliminar") {
