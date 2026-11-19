@@ -181,7 +181,7 @@ private fun HomeScreen(vm: StudioViewModel) {
                 Text(notice.body, fontFamily = Sans, fontSize = 16.sp, modifier = Modifier.padding(top = 4.dp))
                 if (pendingNoticeDelete == notice.id) {
                     Text("Eliminar notificación", modifier = Modifier.clickable {
-                        vm.commit(deleteNotice(vm.book, notice.id))
+                        vm.commit(deleteNotice(vm.book, notice.id, role))
                         pendingNoticeDelete = null
                     }.padding(top = 8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
                 }
