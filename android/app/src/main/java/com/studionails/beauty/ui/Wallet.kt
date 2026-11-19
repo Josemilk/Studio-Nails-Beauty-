@@ -3,6 +3,7 @@ package com.studionails.beauty.ui
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -62,6 +63,7 @@ import com.studionails.beauty.model.removeClient
 import com.studionails.beauty.model.whenLabel
 import java.time.LocalDate
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WalletHome(vm: StudioViewModel) {
     val book = vm.book
@@ -143,6 +145,7 @@ fun WalletHome(vm: StudioViewModel) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MoveList(vm: StudioViewModel, title: String, rows: List<Pair<String, com.studionails.beauty.model.WalletMove>>, today: LocalDate, empty: String) {
     var pendingDelete by remember { mutableStateOf<String?>(null) }
