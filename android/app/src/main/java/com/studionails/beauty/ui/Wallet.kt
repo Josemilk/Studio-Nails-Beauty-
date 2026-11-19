@@ -70,7 +70,7 @@ fun WalletHome(vm: StudioViewModel) {
     var pendingTicketDelete by remember { mutableStateOf<String?>(null) }
     if (role == Role.client) {
         val balance = balanceOf(book, book.clientPhone)
-        val moves = movesFor(book, book.clientPhone).take(8)
+        val moves = movesFor(book, book.clientPhone)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Billetera", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Text("Saldo disponible", color = Soft, fontFamily = Sans, modifier = Modifier.padding(top = 28.dp))
@@ -83,8 +83,8 @@ fun WalletHome(vm: StudioViewModel) {
         }
         return
     }
-    val moves = movesFor(book).take(6)
-    val openTickets = book.tickets.filter { it.usedAt == null }.take(4)
+    val moves = movesFor(book)
+    val openTickets = book.tickets.filter { it.usedAt == null }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("Billetera", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
         Row(Modifier.padding(top = 20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
