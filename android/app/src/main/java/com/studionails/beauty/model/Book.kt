@@ -487,9 +487,9 @@ fun readTicketCode(raw: String): String {
 
 fun addClient(state: BookState, name: String, phone: String): Result<BookState> {
     val cleanName = name.trim()
-    val cleanPhone = digits(phone)
+    val cleanPhone = normalizePhone(phone) ?: ""
     if (cleanName.length < 2) return Result.failure(IllegalArgumentException("Escribe el nombre."))
-    if (cleanPhone.length < 10 || cleanPhone.length > 15) return Result.failure(IllegalArgumentException("El teléfono necesita 10 dígitos."))
+    if (cleanPhone.length != 10) return Result.failure(IllegalArgumentException("El teléfono debe tener el formato +53 xxxxxxxx."))
     if (state.clients.any { digits(it.phone) == cleanPhone }) return Result.failure(IllegalArgumentException("Esa clienta ya está en la lista."))
     return Result.success(state.copy(clients = state.clients + StudioClient(makeId(), cleanName, cleanPhone)))
 }
@@ -510,10 +510,7 @@ fun deleteNotice(state: BookState, id: String, role: Role): BookState =
 
 fun createTicket(state: BookState, kind: String, cents: Int, phone: String, name: String, now: Long): Result<Pair<BookState, WalletTicket>> {
     if (cents <= 0) return Result.failure(IllegalArgumentException("Escribe un valor en dólares."))
-    val cleanPhone = digits(phone)
-    if (phone.isNotBlank() && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
-        return Result.failure(IllegalArgumentException("El teléfono de la clienta no es válido."))
-    }
+    val cleanPhone = if (phone.isBlank()) "" else normalizePhone(phone) ?: return Result.failure(IllegalArgumentException("El teléfono debe tener el formato +53 xxxxxxxx."))
     val used = state.tickets.map { it.id }.toMutableSet()
     var id: String
     do {
