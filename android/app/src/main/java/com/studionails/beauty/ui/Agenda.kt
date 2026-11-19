@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +53,7 @@ import com.studionails.beauty.model.blockDates
 import com.studionails.beauty.model.book
 import com.studionails.beauty.model.bookedOn
 import com.studionails.beauty.model.cancel
+import com.studionails.beauty.model.deleteNotice
 import com.studionails.beauty.model.clientAppointments
 import com.studionails.beauty.model.clockLabel
 import com.studionails.beauty.model.dateKey
@@ -96,6 +98,7 @@ fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
     var showPast by remember { mutableStateOf(false) }
     val now = System.currentTimeMillis()
     val notices = firedNotices(book, role, now)
+    var pendingNoticeDelete by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(notices.map { it.id }, book.readIds) {
         val ids = notices.map { it.id }
         if (ids.any { it !in book.readIds }) vm.commit(book.copy(readIds = (book.readIds + ids).distinct()))
@@ -117,9 +120,15 @@ fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
             Text(note, modifier = Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Peach).padding(14.dp), fontFamily = Sans)
         }
         notices.take(2).forEach { notice ->
-            Column(Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp)) {
+            Column(Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).combinedClickable(onClick = {}, onLongClick = { pendingNoticeDelete = notice.id }).padding(14.dp)) {
                 Text(notice.title, fontWeight = FontWeight.SemiBold, fontFamily = Sans, fontSize = 13.sp)
                 Text(notice.body, fontFamily = Sans)
+                if (pendingNoticeDelete == notice.id) {
+                    Text("Eliminar notificación", modifier = Modifier.clickable {
+                        vm.commit(deleteNotice(vm.book, notice.id))
+                        pendingNoticeDelete = null
+                    }.padding(top = 8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
+                }
             }
         }
         Row(Modifier.padding(top = 20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
