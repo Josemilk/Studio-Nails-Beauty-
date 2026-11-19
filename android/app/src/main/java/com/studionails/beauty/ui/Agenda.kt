@@ -3,6 +3,7 @@ package com.studionails.beauty.ui
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -84,6 +85,7 @@ import com.studionails.beauty.model.weekdayName
 import java.time.LocalDate
 import java.time.YearMonth
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
     val book = vm.book
