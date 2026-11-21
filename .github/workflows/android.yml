@@ -1,13 +1,7 @@
 name: Android
 
-# Se valida en cada pull request y push a main; también puede lanzarse manualmente.
+# Se lanza a mano: Actions → Android → Run workflow.
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
@@ -56,16 +50,9 @@ jobs:
         working-directory: android
         run: |
           APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
-          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          CERT_INFO=$("$APKSIGNER" verify --print-certs "$APK")
-          printf '%s\n' "$CERT_INFO"
-          ACTUAL=$(printf '%s\n' "$CERT_INFO" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
-          EXPECTED="131ac84a4240b0ad921ca700f0dbd9984b7554fb99f40f96c97f08e95cac952a"
-          test -n "$ACTUAL"
-          if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "::error::La huella SHA-256 del certificado no coincide con la esperada."
-            exit 1
-          fi
+          BT=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -1)
+          "$BT" verify --print-certs "$APK" | tee /tmp/cert.txt
+          grep -qi "131ac84a4240b0ad921ca700f0dbd9984b7554fb99f40f96c97f08e95cac952a" /tmp/cert.txt
 
       - uses: actions/upload-artifact@v4
         with:

@@ -13,7 +13,7 @@ enum class Role { manicurist, client }
 
 data class Settings(
     val code: String = "MESA",
-    val ownerName: String = "Manicura",
+    val ownerName: String = "Ana",
     val ownerPhone: String = "2145550100",
     val studioName: String = "Studio Nails & Beauty",
     val workDays: List<Int> = listOf(2, 3, 4, 5, 6),
@@ -67,6 +67,8 @@ data class WalletTicket(
     val usedAt: Long? = null,
     val usedBy: String? = null,
     val usedName: String? = null,
+    val expiresAt: Long = 0,
+    val nonce: String = "",
 )
 
 data class WalletMove(
@@ -77,6 +79,7 @@ data class WalletMove(
     val cents: Int,
     val at: Long,
     val ticketId: String,
+    val requestId: String = "",
 )
 
 data class Notice(
@@ -95,13 +98,13 @@ data class BookState(
     val readIds: List<String> = emptyList(),
     val blocked: List<String> = emptyList(),
     val closedSlots: List<String> = emptyList(),
-    val clientName: String = "",
-    val clientPhone: String = "",
+    val clientName: String = "Elena Ruiz",
+    val clientPhone: String = "2145550148",
     val clients: List<StudioClient> = emptyList(),
     val tickets: List<WalletTicket> = emptyList(),
     val moves: List<WalletMove> = emptyList(),
-    val hiddenNoticeIds: List<String> = emptyList(),
-    val hiddenMoveIds: List<String> = emptyList(),
+    val confirmedBalance: Int = 0,
+    val deskHost: String = "",
 )
 
 private val Months = listOf(
@@ -116,22 +119,17 @@ private val random = SecureRandom()
 
 fun digits(phone: String) = phone.filter { it.isDigit() }
 
-fun normalizePhone(phone: String): String? {
-    val raw = digits(phone)
-    val local = when {
-        raw.length == 8 -> raw
-        raw.length == 10 && raw.startsWith("53") -> raw.drop(2)
-        else -> return null
-    }
-    return "53$local"
-}
-
 fun prettyPhone(phone: String): String {
-    val normalized = normalizePhone(phone) ?: return phone.trim()
-    return "+53 ${normalized.drop(2)}"
+    val raw = digits(phone)
+    val n = if (raw.length == 11 && raw.startsWith("1")) raw.drop(1) else raw
+    if (n.length != 10) return phone.trim()
+    return "(${n.take(3)}) ${n.substring(3, 6)} ${n.substring(6)}"
 }
 
-fun dialNumber(phone: String): String = normalizePhone(phone) ?: digits(phone)
+fun dialNumber(phone: String): String {
+    val d = digits(phone)
+    return if (d.length == 10) "1$d" else d
+}
 
 fun pad(n: Int) = n.toString().padStart(2, '0')
 
@@ -305,11 +303,11 @@ data class BookInput(
 
 fun book(state: BookState, input: BookInput): Result<BookState> {
     val name = input.name.trim()
-    val phone = normalizePhone(input.phone) ?: return Result.failure(IllegalArgumentException("El teléfono debe tener el formato +53 xxxxxxxx."))
+    val phone = digits(input.phone)
     val service = serviceById(input.serviceId) ?: return Result.failure(IllegalArgumentException("Elige un servicio."))
     if (input.time.isBlank()) return Result.failure(IllegalArgumentException("Elige una hora."))
     if (name.length < 2) return Result.failure(IllegalArgumentException("Escribe el nombre."))
-    if (phone.length != 10) return Result.failure(IllegalArgumentException("El teléfono debe tener el formato +53 xxxxxxxx."))
+    if (phone.length < 10 || phone.length > 15) return Result.failure(IllegalArgumentException("El teléfono necesita 10 dígitos."))
     if (!isWorkDay(input.date, state.settings)) return Result.failure(IllegalArgumentException("Ese día la mesa está cerrada."))
     if (isBlocked(state, input.date)) return Result.failure(IllegalArgumentException("Ese día está bloqueado."))
     if (isSlotClosed(state, input.date, input.time)) return Result.failure(IllegalArgumentException("Esa hora está cerrada."))
@@ -340,9 +338,9 @@ fun cancel(state: BookState, id: String, by: Role, now: Long) = state.copy(
 
 fun saveProfile(state: BookState, role: Role, name: String, phone: String): Result<BookState> {
     val cleanName = name.trim()
-    val cleanPhone = normalizePhone(phone) ?: ""
+    val cleanPhone = digits(phone)
     if (cleanName.length < 2) return Result.failure(IllegalArgumentException("Escribe el nombre."))
-    if (cleanPhone.length != 10) return Result.failure(IllegalArgumentException("El teléfono debe tener el formato +53 xxxxxxxx."))
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) return Result.failure(IllegalArgumentException("El teléfono necesita 10 dígitos."))
     if (role == Role.client) {
         val prev = digits(state.clientPhone)
         return Result.success(
@@ -449,7 +447,7 @@ fun noticesFor(state: BookState): List<Notice> {
             body = included.joinToString(" · ") { "${clockLabel(it.time)} ${it.name}" },
         )
     }
-    return notices.filterNot { it.id in state.hiddenNoticeIds || "${it.role.name}:${it.id}" in state.hiddenNoticeIds }
+    return notices
 }
 
 fun firedNotices(state: BookState, role: Role, now: Long): List<Notice> {
@@ -473,7 +471,7 @@ fun balanceOf(state: BookState, phone: String): Int {
 }
 
 fun movesFor(state: BookState, phone: String? = null) = state.moves
-    .filter { it.id !in state.hiddenMoveIds && (phone == null || digits(it.phone) == digits(phone)) }
+    .filter { phone == null || digits(it.phone) == digits(phone) }
     .sortedByDescending { it.at }
 
 fun qrPayload(id: String) = "SNB:$id"
@@ -487,30 +485,21 @@ fun readTicketCode(raw: String): String {
 
 fun addClient(state: BookState, name: String, phone: String): Result<BookState> {
     val cleanName = name.trim()
-    val cleanPhone = normalizePhone(phone) ?: ""
+    val cleanPhone = digits(phone)
     if (cleanName.length < 2) return Result.failure(IllegalArgumentException("Escribe el nombre."))
-    if (cleanPhone.length != 10) return Result.failure(IllegalArgumentException("El teléfono debe tener el formato +53 xxxxxxxx."))
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) return Result.failure(IllegalArgumentException("El teléfono necesita 10 dígitos."))
     if (state.clients.any { digits(it.phone) == cleanPhone }) return Result.failure(IllegalArgumentException("Esa clienta ya está en la lista."))
     return Result.success(state.copy(clients = state.clients + StudioClient(makeId(), cleanName, cleanPhone)))
 }
 
 fun removeClient(state: BookState, id: String) = state.copy(clients = state.clients.filter { it.id != id })
 
-fun deleteTicket(state: BookState, id: String): BookState =
-    state.copy(tickets = state.tickets.filterNot { it.id == id && it.usedAt == null })
-
-fun deleteMove(state: BookState, id: String): BookState =
-    state.copy(hiddenMoveIds = (state.hiddenMoveIds + id).distinct())
-
-fun deleteAppointment(state: BookState, id: String): BookState =
-    state.copy(appointments = state.appointments.filterNot { it.id == id }, readIds = state.readIds.filterNot { it.contains(id) }, hiddenNoticeIds = (state.hiddenNoticeIds + noticesFor(state).filter { it.appointmentId == id }.map { "${it.role.name}:${it.id}" }).distinct())
-
-fun deleteNotice(state: BookState, id: String, role: Role): BookState =
-    state.copy(hiddenNoticeIds = (state.hiddenNoticeIds + "${role.name}:$id").distinct(), readIds = state.readIds.filterNot { it == id })
-
 fun createTicket(state: BookState, kind: String, cents: Int, phone: String, name: String, now: Long): Result<Pair<BookState, WalletTicket>> {
     if (cents <= 0) return Result.failure(IllegalArgumentException("Escribe un valor en dólares."))
-    val cleanPhone = if (phone.isBlank()) "" else normalizePhone(phone) ?: return Result.failure(IllegalArgumentException("El teléfono debe tener el formato +53 xxxxxxxx."))
+    val cleanPhone = digits(phone)
+    if (phone.isNotBlank() && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
+        return Result.failure(IllegalArgumentException("El teléfono de la clienta no es válido."))
+    }
     val used = state.tickets.map { it.id }.toMutableSet()
     var id: String
     do {
@@ -521,24 +510,7 @@ fun createTicket(state: BookState, kind: String, cents: Int, phone: String, name
 }
 
 fun redeemTicket(state: BookState, raw: String, expected: String, phone: String, name: String, now: Long): Result<Pair<BookState, Int>> {
-    val id = readTicketCode(raw)
-    if (id.isEmpty()) return Result.failure(IllegalArgumentException("Ese código no es de Studio Nails."))
-    val ticket = state.tickets.find { it.id == id } ?: return Result.failure(IllegalArgumentException("No encuentro ese código."))
-    if (ticket.usedAt != null) return Result.failure(IllegalArgumentException("Ese código ya se usó."))
-    if (ticket.kind != expected) {
-        val message = if (expected == "topup") "Ese código es un cobro. Ábrelo en Pagar." else "Ese código es una recarga. Ábrelo en Recargar."
-        return Result.failure(IllegalArgumentException(message))
-    }
-    val mine = normalizePhone(phone) ?: ""
-    if (mine.length != 10) return Result.failure(IllegalArgumentException("Guarda tu teléfono en ajustes antes de usar la billetera."))
-    if (ticket.phone.isNotEmpty() && digits(ticket.phone) != mine) return Result.failure(IllegalArgumentException("Este código es para otra clienta."))
-    if (ticket.kind == "charge" && balanceOf(state, mine) < ticket.cents) return Result.failure(IllegalArgumentException("No alcanza el saldo."))
-    val move = WalletMove("m" + now.toString(36), mine, name.trim().ifBlank { "Clienta" }, ticket.kind, ticket.cents, now, ticket.id)
-    val next = state.copy(
-        moves = listOf(move) + state.moves,
-        tickets = state.tickets.map { if (it.id == ticket.id) it.copy(usedAt = now, usedBy = mine, usedName = move.name) else it },
-    )
-    return Result.success(next to balanceOf(next, mine))
+    return Result.failure(IllegalArgumentException("El saldo solo lo confirma el teléfono de la manicura."))
 }
 
 fun whenLabel(at: Long, today: LocalDate): String {
@@ -552,11 +524,56 @@ fun whenLabel(at: Long, today: LocalDate): String {
     }
 }
 
-fun seed(now: LocalDateTime = LocalDateTime.now()): BookState = BookState(
-    settings = Settings(ownerName = "Manicura"),
-    clientName = "",
-    clientPhone = "",
-)
+fun seed(now: LocalDateTime = LocalDateTime.now()): BookState {
+    val settings = Settings()
+    val zone = ZoneId.systemDefault()
+    val createdEarly = now.minusDays(1).withHour(9).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+    fun nextWork(offset: Long): LocalDate {
+        var day = now.toLocalDate().plusDays(offset)
+        repeat(21) {
+            if (settings.workDays.contains(jsDay(day))) return day
+            day = day.plusDays(1)
+        }
+        return day
+    }
+    val soon = nextWork(1)
+    val later = nextWork(3)
+    val laterKey = if (dateKey(later) == dateKey(soon)) dateKey(nextWork(5)) else dateKey(later)
+    val appointments = mutableListOf(
+        Appointment("seed-elena-past", dateKey(now.toLocalDate().minusDays(1)), "15:00", "Elena Ruiz", "2145550148", "clasica", true, "booked", createdEarly - 24 * Hour),
+        Appointment("seed-elena-soon", dateKey(soon), "11:00", "Elena Ruiz", "2145550148", "clasica", false, "booked", createdEarly),
+        Appointment("seed-marisol-soon", dateKey(soon), "16:00", "Marisol Vega", "9725550172", "art", true, "booked", createdEarly),
+        Appointment("seed-elena-later", laterKey, "12:00", "Elena Ruiz", "2145550148", "cuidado", false, "booked", createdEarly),
+    )
+    if (settings.workDays.contains(jsDay(now.toLocalDate()))) {
+        val nowMin = now.hour * 60 + now.minute
+        val near = slotTimes(settings).minByOrNull { time ->
+            val delta = timeToMinutes(time) - nowMin
+            when {
+                delta in 15..100 -> delta
+                delta in -50..-5 -> 200 + abs(delta)
+                else -> Int.MAX_VALUE
+            }
+        }
+        if (near != null && timeToMinutes(near).let { delta ->
+                val d = delta - nowMin
+                d in 15..100 || d in -50..-5
+            }
+        ) {
+            appointments += Appointment("seed-elena-near", dateKey(now.toLocalDate()), near, "Elena Ruiz", "2145550148", "gel", false, "booked", createdEarly)
+        }
+    }
+    return BookState(
+        settings = settings,
+        appointments = appointments,
+        clientName = "Elena Ruiz",
+        clientPhone = "2145550148",
+        clients = listOf(
+            StudioClient("elena", "Elena Ruiz", "2145550148"),
+            StudioClient("marisol", "Marisol Vega", "9725550172"),
+        ),
+    )
+}
 
 fun BookState.toJson(): String {
     fun role(value: Role?) = value?.name ?: ""
@@ -593,8 +610,6 @@ fun BookState.toJson(): String {
         }
     })
     root.put("readIds", JSONArray(readIds))
-    root.put("hiddenNoticeIds", JSONArray(hiddenNoticeIds))
-    root.put("hiddenMoveIds", JSONArray(hiddenMoveIds))
     root.put("blocked", JSONArray(blocked))
     root.put("closedSlots", JSONArray(closedSlots))
     root.put("clients", JSONArray().apply {
@@ -612,6 +627,8 @@ fun BookState.toJson(): String {
                 put("usedAt", ticket.usedAt ?: 0)
                 put("usedBy", ticket.usedBy ?: "")
                 put("usedName", ticket.usedName ?: "")
+                put("expiresAt", ticket.expiresAt)
+                put("nonce", ticket.nonce)
             })
         }
     })
@@ -625,9 +642,12 @@ fun BookState.toJson(): String {
                 put("cents", move.cents)
                 put("at", move.at)
                 put("ticketId", move.ticketId)
+                put("requestId", move.requestId)
             })
         }
     })
+    root.put("confirmedBalance", confirmedBalance)
+    root.put("deskHost", deskHost)
     return root.toString()
 }
 
@@ -636,8 +656,8 @@ fun parseBook(raw: String): BookState {
     val settingsJson = root.optJSONObject("settings") ?: JSONObject()
     val settings = Settings(
         code = settingsJson.optString("code", "MESA"),
-        ownerName = settingsJson.optString("ownerName", "Manicura").ifBlank { "Manicura" },
-        ownerPhone = normalizePhone(settingsJson.optString("ownerPhone", "")) ?: "",
+        ownerName = settingsJson.optString("ownerName", "Ana").ifBlank { "Ana" },
+        ownerPhone = settingsJson.optString("ownerPhone", ""),
         studioName = "Studio Nails & Beauty",
         workDays = settingsJson.optJSONArray("workDays")?.toIntList() ?: listOf(2, 3, 4, 5, 6),
         startMin = settingsJson.optInt("startMin", 10 * 60),
@@ -653,7 +673,7 @@ fun parseBook(raw: String): BookState {
                 date = item.getString("date"),
                 time = item.getString("time"),
                 name = item.optString("name"),
-                phone = normalizePhone(item.optString("phone")) ?: "",
+                phone = item.optString("phone"),
                 serviceId = item.optString("serviceId").ifBlank { null },
                 paid = item.optBoolean("paid"),
                 status = item.optString("status", "booked"),
@@ -662,41 +682,44 @@ fun parseBook(raw: String): BookState {
                 cancelledAt = item.optLong("cancelledAt").takeIf { it > 0 },
                 cancelledBy = item.optString("cancelledBy").toRole(),
             )
-        }.filterNot { it.id.startsWith("seed-") },
+        },
         readIds = root.optJSONArray("readIds").toStringList(),
-        hiddenNoticeIds = root.optJSONArray("hiddenNoticeIds").toStringList(),
-        hiddenMoveIds = root.optJSONArray("hiddenMoveIds").toStringList(),
         blocked = root.optJSONArray("blocked").toStringList(),
         closedSlots = root.optJSONArray("closedSlots").toStringList(),
-        clientName = root.optString("clientName", "").takeUnless { it == "Elena Ruiz" } ?: "",
-        clientPhone = normalizePhone(root.optString("clientPhone", "").takeUnless { it == "2145550148" } ?: "") ?: "",
+        clientName = root.optString("clientName", "Elena Ruiz"),
+        clientPhone = root.optString("clientPhone", "2145550148"),
         clients = root.optJSONArray("clients").toList { item ->
-            StudioClient(item.getString("id"), item.optString("name"), normalizePhone(item.optString("phone")) ?: "")
-        }.filter { it.id !in setOf("elena", "marisol") && it.name.isNotBlank() && it.phone.isNotBlank() },
+            StudioClient(item.getString("id"), item.optString("name"), digits(item.optString("phone")))
+        }.filter { it.name.isNotBlank() && it.phone.isNotBlank() },
         tickets = root.optJSONArray("tickets").toList { item ->
             WalletTicket(
                 id = item.getString("id"),
                 kind = item.optString("kind"),
                 cents = item.optInt("cents"),
-                phone = normalizePhone(item.optString("phone")) ?: "",
+                phone = item.optString("phone"),
                 name = item.optString("name"),
                 createdAt = item.optLong("createdAt"),
                 usedAt = item.optLong("usedAt").takeIf { it > 0 },
                 usedBy = item.optString("usedBy").ifBlank { null },
                 usedName = item.optString("usedName").ifBlank { null },
+                expiresAt = item.optLong("expiresAt"),
+                nonce = item.optString("nonce"),
             )
         },
         moves = root.optJSONArray("moves").toList { item ->
             WalletMove(
                 id = item.getString("id"),
-                phone = normalizePhone(item.optString("phone")) ?: "",
+                phone = item.optString("phone"),
                 name = item.optString("name"),
                 kind = item.optString("kind"),
                 cents = item.optInt("cents"),
                 at = item.optLong("at"),
                 ticketId = item.optString("ticketId"),
+                requestId = item.optString("requestId"),
             )
         },
+        confirmedBalance = root.optInt("confirmedBalance"),
+        deskHost = root.optString("deskHost"),
     )
 }
 

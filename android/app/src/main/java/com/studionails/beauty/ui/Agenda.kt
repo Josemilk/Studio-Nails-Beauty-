@@ -3,11 +3,9 @@ package com.studionails.beauty.ui
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Message
@@ -54,7 +52,6 @@ import com.studionails.beauty.model.blockDates
 import com.studionails.beauty.model.book
 import com.studionails.beauty.model.bookedOn
 import com.studionails.beauty.model.cancel
-import com.studionails.beauty.model.deleteNotice
 import com.studionails.beauty.model.clientAppointments
 import com.studionails.beauty.model.clockLabel
 import com.studionails.beauty.model.dateKey
@@ -85,7 +82,6 @@ import com.studionails.beauty.model.weekdayName
 import java.time.LocalDate
 import java.time.YearMonth
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
     val book = vm.book
@@ -100,7 +96,6 @@ fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
     var showPast by remember { mutableStateOf(false) }
     val now = System.currentTimeMillis()
     val notices = firedNotices(book, role, now)
-    var pendingNoticeDelete by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(notices.map { it.id }, book.readIds) {
         val ids = notices.map { it.id }
         if (ids.any { it !in book.readIds }) vm.commit(book.copy(readIds = (book.readIds + ids).distinct()))
@@ -111,7 +106,7 @@ fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
     val monthShut = monthFuture.isNotEmpty() && monthFuture.all { isBlocked(book, it) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        ScreenTitle("Citas") { vm.back() }
+        Text("Citas", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
         Text(
             if (role == Role.client) "Elige un día y un horario libre." else "Toca un día para ver clientas o editar turnos.",
             color = Soft,
@@ -122,15 +117,9 @@ fun CitasScreen(vm: StudioViewModel, serviceId: String?) {
             Text(note, modifier = Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Peach).padding(14.dp), fontFamily = Sans)
         }
         notices.take(2).forEach { notice ->
-            Column(Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).combinedClickable(onClick = {}, onLongClick = { pendingNoticeDelete = notice.id }).padding(14.dp)) {
+            Column(Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp)) {
                 Text(notice.title, fontWeight = FontWeight.SemiBold, fontFamily = Sans, fontSize = 13.sp)
                 Text(notice.body, fontFamily = Sans)
-                if (pendingNoticeDelete == notice.id) {
-                    Text("Eliminar notificación", modifier = Modifier.clickable {
-                        vm.commit(deleteNotice(vm.book, notice.id, role))
-                        pendingNoticeDelete = null
-                    }.padding(top = 8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
-                }
             }
         }
         Row(Modifier.padding(top = 20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -273,8 +262,8 @@ private fun DayPanel(vm: StudioViewModel, day: String, serviceId: String?, role:
 
     Column(Modifier.padding(top = 18.dp)) {
         Row(Modifier.clickable { onClose("") }, verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Close, contentDescription = "Cerrar", tint = Accent)
-            Text(" Cerrar", color = Accent, fontFamily = Sans, fontWeight = FontWeight.Bold)
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Mes", tint = Soft)
+            Text(" Mes", color = Soft, fontFamily = Sans)
         }
         Text(headingDate(day).replaceFirstChar { it.uppercase() }, fontFamily = Display, fontSize = 28.sp, modifier = Modifier.padding(top = 8.dp))
         Text(
@@ -458,7 +447,7 @@ fun DetailScreen(vm: StudioViewModel, id: String, back: String) {
         Text(clockLabel(cita.time), fontFamily = Display, fontSize = 48.sp, modifier = Modifier.padding(top = 20.dp))
         Text(longDate(cita.date), fontFamily = Sans, fontSize = 18.sp)
         if (role == Role.manicurist) {
-            Text("${service?.name ?: "Cita"} · ${prettyPhone(cita.phone)}", color = Soft, fontFamily = Sans)
+            Text("${service?.name ?: "Cita"} · ${prettyPhone(cita.phone)} · $${service?.price ?: 0}", color = Soft, fontFamily = Sans)
             Spacer(Modifier.height(20.dp))
             ContactRow(Icons.Outlined.Phone, "Llamar") { openLink(context, Intent(Intent.ACTION_DIAL, Uri.parse("tel:+${dialNumber(cita.phone)}"))) }
             ContactRow(Icons.Outlined.Message, "Mensaje") {

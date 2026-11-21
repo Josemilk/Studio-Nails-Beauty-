@@ -8,10 +8,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.media.AudioAttributes
-import android.net.Uri
-import android.provider.Settings
-import android.media.RingtoneManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.studionails.beauty.R
@@ -19,29 +15,10 @@ import com.studionails.beauty.data.BookStore
 import com.studionails.beauty.model.BookState
 import com.studionails.beauty.model.noticesFor
 
-private const val ChannelId = "citas_v3"
+private const val ChannelId = "citas"
 private const val Prefs = "studio_reminders"
 
 object Reminders {
-    fun selectedSound(context: Context): Uri? {
-        val saved = context.getSharedPreferences(Prefs, Context.MODE_PRIVATE).getString("sound_uri", null)
-        return saved?.let(Uri::parse) ?: Settings.System.DEFAULT_NOTIFICATION_URI
-    }
-
-    fun soundName(context: Context): String {
-        val uri = selectedSound(context)
-        return if (uri == null) "Silencio" else RingtoneManager.getRingtone(context, uri)?.getTitle(context) ?: "Predeterminado"
-    }
-
-    fun saveSound(context: Context, uri: Uri?) {
-        context.getSharedPreferences(Prefs, Context.MODE_PRIVATE).edit()
-            .putString("sound_uri", uri?.toString() ?: Settings.System.DEFAULT_NOTIFICATION_URI.toString())
-            .apply()
-        val manager = context.getSystemService(NotificationManager::class.java)
-        manager.deleteNotificationChannel(ChannelId)
-        ensureChannel(context)
-    }
-
     fun sync(context: Context, state: BookState) {
         ensureChannel(context)
         val alarm = context.getSystemService(AlarmManager::class.java)
@@ -83,7 +60,6 @@ object Reminders {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
             .build()
         try {
             NotificationManagerCompat.from(context).notify(id, notification)
@@ -96,10 +72,7 @@ object Reminders {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(ChannelId) != null) return
         val channel = NotificationChannel(ChannelId, "Citas", NotificationManager.IMPORTANCE_HIGH)
-        channel.description = "Avisos cuando se agenda o cancela una cita y recordatorios."
-        channel.enableVibration(true)
-        channel.vibrationPattern = longArrayOf(0, 250, 120, 250)
-        channel.setSound(selectedSound(context), AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build())
+        channel.description = "Recordatorios de la agenda"
         manager.createNotificationChannel(channel)
     }
 

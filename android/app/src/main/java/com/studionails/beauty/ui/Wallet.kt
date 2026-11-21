@@ -3,12 +3,10 @@ package com.studionails.beauty.ui
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,6 +25,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,45 +47,50 @@ import com.journeyapps.barcodescanner.ScanOptions
 import com.studionails.beauty.model.Role
 import com.studionails.beauty.model.addClient
 import com.studionails.beauty.model.balanceOf
-import com.studionails.beauty.model.createTicket
-import com.studionails.beauty.model.deleteMove
-import com.studionails.beauty.model.deleteTicket
 import com.studionails.beauty.model.digits
 import com.studionails.beauty.model.formatMoney
 import com.studionails.beauty.model.movesFor
 import com.studionails.beauty.model.parseMoney
 import com.studionails.beauty.model.prettyPhone
-import com.studionails.beauty.model.qrPayload
-import com.studionails.beauty.model.readTicketCode
-import com.studionails.beauty.model.redeemTicket
 import com.studionails.beauty.model.removeClient
 import com.studionails.beauty.model.whenLabel
+import com.studionails.beauty.qr.TicketClaim
+import com.studionails.beauty.qr.parseTicketQr
+import com.studionails.beauty.qr.ticketQr
 import java.time.LocalDate
+import java.util.UUID
+import kotlin.concurrent.thread
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun WalletHome(vm: StudioViewModel) {
     val book = vm.book
     val role = book.mode ?: Role.client
     val today = LocalDate.now()
-    var pendingTicketDelete by remember { mutableStateOf<String?>(null) }
     if (role == Role.client) {
-        val balance = balanceOf(book, book.clientPhone)
-        val moves = movesFor(book, book.clientPhone)
+        val balance = if (vm.isDesk()) balanceOf(book, book.clientPhone) else book.confirmedBalance
+        val moves = movesFor(book, book.clientPhone).take(8)
+        LaunchedEffect(book.deskHost) { vm.refreshBalance() }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Billetera", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Text("Saldo disponible", color = Soft, fontFamily = Sans, modifier = Modifier.padding(top = 28.dp))
             Text(formatMoney(balance), fontFamily = Display, fontSize = 56.sp)
+            Text(
+                if (vm.isDesk()) "Este teléfono lleva la caja." else "Último saldo confirmado por la manicura.",
+                color = Soft,
+                fontFamily = Sans,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
             Row(Modifier.padding(top = 24.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 PrimaryButton("Recargar", Modifier.weight(1f)) { vm.open(Screen.Scan("topup")) }
                 GhostButton("Pagar", Modifier.weight(1f)) { vm.open(Screen.Scan("charge")) }
             }
-            MoveList(vm, "Movimientos", moves.map { it.kind to it }, today, "Todavía no hay recargas ni pagos.")
+            MoveList("Movimientos", moves.map { it.kind to it }, today, "Todavía no hay recargas ni pagos.")
         }
         return
     }
-    val moves = movesFor(book)
-    val openTickets = book.tickets.filter { it.usedAt == null }
+    val moves = movesFor(book).take(6)
+    val openTickets = book.tickets.filter { it.usedAt == null }.take(4)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("Billetera", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
         Row(Modifier.padding(top = 20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -95,10 +99,9 @@ fun WalletHome(vm: StudioViewModel) {
         }
         openTickets.forEach { ticket ->
             Row(
-                Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).combinedClickable(
-                    onClick = { vm.open(Screen.Qr(ticket.id)) },
-                    onLongClick = { pendingTicketDelete = ticket.id },
-                ).padding(14.dp),
+                Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).clickable {
+                    vm.open(Screen.Qr(ticket.id))
+                }.padding(14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
@@ -106,15 +109,6 @@ fun WalletHome(vm: StudioViewModel) {
                     Text("${ticket.name.ifBlank { "Cualquier clienta" }} · ${ticket.id}", color = Soft, fontFamily = Sans, fontSize = 13.sp)
                 }
                 Text("Ver QR", fontWeight = FontWeight.SemiBold, fontFamily = Sans, fontSize = 13.sp)
-            }
-            if (pendingTicketDelete == ticket.id) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Text("Cancelar", modifier = Modifier.clickable { pendingTicketDelete = null }.padding(8.dp), color = Soft, fontFamily = Sans)
-                    Text("Eliminar QR", modifier = Modifier.clickable {
-                        vm.commit(deleteTicket(vm.book, ticket.id))
-                        pendingTicketDelete = null
-                    }.padding(8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
-                }
             }
         }
         Row(Modifier.padding(top = 28.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -140,20 +134,18 @@ fun WalletHome(vm: StudioViewModel) {
                 Text(formatMoney(balanceOf(book, client.phone)), fontFamily = Display, fontSize = 24.sp)
             }
         }
-        MoveList(vm, "Últimos movimientos", moves.map { it.kind to it }, today, "Cuando una clienta escanee un código, queda aquí.")
+        MoveList("Últimos movimientos", moves.map { it.kind to it }, today, "Cuando una clienta escanee un código, queda aquí.")
         Spacer(Modifier.height(12.dp))
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MoveList(vm: StudioViewModel, title: String, rows: List<Pair<String, com.studionails.beauty.model.WalletMove>>, today: LocalDate, empty: String) {
-    var pendingDelete by remember { mutableStateOf<String?>(null) }
+private fun MoveList(title: String, rows: List<Pair<String, com.studionails.beauty.model.WalletMove>>, today: LocalDate, empty: String) {
     Text(title, fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 22.sp, modifier = Modifier.padding(top = 28.dp).fillMaxWidth())
     if (rows.isEmpty()) Text(empty, color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp))
     rows.forEach { (_, move) ->
         Row(
-            Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).combinedClickable(onClick = {}, onLongClick = { pendingDelete = move.id }).padding(14.dp),
+            Modifier.padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column {
@@ -161,15 +153,6 @@ private fun MoveList(vm: StudioViewModel, title: String, rows: List<Pair<String,
                 Text(whenLabel(move.at, today), color = Soft, fontFamily = Sans, fontSize = 13.sp)
             }
             Text("${if (move.kind == "topup") "+" else "−"}${formatMoney(move.cents)}", fontFamily = Display, fontSize = 20.sp)
-        }
-        if (pendingDelete == move.id) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text("Cancelar", modifier = Modifier.clickable { pendingDelete = null }.padding(8.dp), color = Soft, fontFamily = Sans)
-                Text("Eliminar", modifier = Modifier.clickable {
-                    vm.commit(deleteMove(vm.book, move.id))
-                    pendingDelete = null
-                }.padding(8.dp), color = Accent, fontWeight = FontWeight.Bold, fontFamily = Sans)
-            }
         }
     }
 }
@@ -213,9 +196,8 @@ fun AmountScreen(vm: StudioViewModel, kind: String, clientId: String?) {
                 error = "Escribe un valor, por ejemplo 20."
                 return@PrimaryButton
             }
-            val result = createTicket(book, kind, cents, chosen?.phone ?: "", chosen?.name ?: "", System.currentTimeMillis())
-            result.onSuccess { (next, ticket) ->
-                vm.commit(next)
+            val result = vm.issueTicket(kind, cents, chosen?.phone ?: "", chosen?.name ?: "")
+            result.onSuccess { ticket ->
                 vm.open(Screen.Qr(ticket.id))
             }.onFailure { error = it.message ?: "No se pudo crear el código." }
         }
@@ -234,14 +216,16 @@ fun QrScreen(vm: StudioViewModel, ticketId: String) {
         Text(formatMoney(ticket.cents), fontFamily = Display, fontSize = 56.sp, modifier = Modifier.padding(top = 16.dp))
         Text(if (ticket.name.isBlank()) "Para quien lo escanee" else "Para ${ticket.name}", color = Soft, fontFamily = Sans)
         Image(
-            encodeQr(qrPayload(ticket.id)).asImageBitmap(),
+            encodeQr(ticketQr(ticket, vm.deskUrl())).asImageBitmap(),
             contentDescription = "Código QR del valor",
             modifier = Modifier.padding(top = 16.dp).size(240.dp).clip(RoundedCornerShape(24.dp)).background(Card).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(12.dp),
         )
         Text("Código", color = Soft, fontFamily = Sans, fontSize = 13.sp, modifier = Modifier.padding(top = 16.dp))
         Text(ticket.id, fontFamily = Display, fontSize = 32.sp, letterSpacing = 4.sp)
         Text(
-            if (ticket.usedAt != null) "Listo. ${ticket.usedName ?: "La clienta"} ya lo usó." else "Esperando que lo escaneen.",
+            if (ticket.usedAt != null) "Listo. ${ticket.usedName ?: "La clienta"} ya lo usó."
+            else if (vm.deskUrl().isBlank()) "Conéctate al Wi-Fi para que otro teléfono pueda usarlo."
+            else "Caduca en 30 minutos. Las dos tienen que estar en el mismo Wi-Fi.",
             fontFamily = Sans,
             fontSize = 16.sp,
             textAlign = TextAlign.Center,
@@ -254,67 +238,85 @@ fun QrScreen(vm: StudioViewModel, ticketId: String) {
 fun ScanScreen(vm: StudioViewModel, kind: String) {
     val book = vm.book
     var typed by remember { mutableStateOf("") }
-    var found by remember { mutableStateOf("") }
+    var claim by remember { mutableStateOf<TicketClaim?>(null) }
+    var phone by remember { mutableStateOf(prettyPhone(book.clientPhone)) }
+    var requestId by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var done by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    fun take(raw: String) {
+        val parsed = parseTicketQr(raw)
+        if (parsed == null) {
+            claim = null
+            error = "Ese código hay que escanearlo. Las letras solas no alcanzan."
+            return
+        }
+        if (parsed.kind != kind) {
+            claim = null
+            error = if (kind == "topup") "Ese código es un cobro. Ábrelo en Pagar." else "Ese código es una recarga. Ábrelo en Recargar."
+            return
+        }
+        claim = parsed
+        requestId = UUID.randomUUID().toString()
+        error = ""
+    }
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents ?: return@rememberLauncherForActivityResult
-        found = previewCode(book, kind, raw).also { error = if (it.isEmpty()) messageFor(book, kind, raw) else "" }
-        if (found.isEmpty()) error = messageFor(book, kind, raw)
+        take(raw)
     }
-    val ticket = book.tickets.find { it.id == found }
-    val balance = balanceOf(book, book.clientPhone)
-    val short = ticket != null && kind == "charge" && balance < ticket.cents
+    val pending = claim
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         ScreenTitle(if (kind == "topup") "Recargar" else "Pagar") { vm.open(Screen.Wallet) }
         if (done.isNotEmpty()) {
             Text(done, fontFamily = Display, fontSize = 36.sp, modifier = Modifier.padding(top = 24.dp))
             return@Column
         }
-        if (ticket != null) {
-            Text(if (kind == "topup") "Recarga" else "Cobro", color = Soft, fontFamily = Sans, modifier = Modifier.padding(top = 20.dp))
-            Text(formatMoney(ticket.cents), fontFamily = Display, fontSize = 56.sp)
-            Text("Saldo actual ${formatMoney(balance)}", color = Soft, fontFamily = Sans, fontSize = 18.sp)
-            if (short) Text("No alcanza el saldo para este cobro.", fontFamily = Sans, modifier = Modifier.padding(top = 8.dp))
+        if (pending != null) {
+            Text(if (kind == "topup") "Recarga por confirmar" else "Cobro por confirmar", color = Soft, fontFamily = Sans, modifier = Modifier.padding(top = 20.dp))
+            Text(formatMoney(pending.cents), fontFamily = Display, fontSize = 56.sp)
+            Text("El teléfono de la manicura confirma el valor. Este aparato no lo cambia.", color = Soft, fontFamily = Sans, fontSize = 16.sp)
+            Spacer(Modifier.height(16.dp))
+            PaperField("Tu teléfono", phone, { phone = it }, KeyboardType.Phone)
+            if (error.isNotEmpty()) Text(error, fontFamily = Sans, modifier = Modifier.padding(top = 8.dp))
             Spacer(Modifier.height(20.dp))
-            PrimaryButton(if (kind == "topup") "Agregar al saldo" else "Pagar", enabled = !short) {
-                val result = redeemTicket(book, ticket.id, kind, book.clientPhone, book.clientName, System.currentTimeMillis())
-                result.onSuccess { (next, left) ->
-                    vm.commit(next)
-                    done = if (kind == "topup") "Listo. Tu saldo es ${formatMoney(left)}." else "Pagado. Tu saldo es ${formatMoney(left)}."
-                }.onFailure {
-                    error = it.message ?: "No se pudo usar el código."
-                    found = ""
+            PrimaryButton(if (busy) "Confirmando..." else if (kind == "topup") "Pedir recarga" else "Pedir cobro", enabled = !busy) {
+                if (digits(phone).length < 10) {
+                    error = "Escribe tu teléfono, con 10 dígitos."
+                    return@PrimaryButton
+                }
+                busy = true
+                error = ""
+                val id = requestId
+                thread(name = "redeem", isDaemon = true) {
+                    val result = vm.redeem(pending, phone, book.clientName, id)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        busy = false
+                        result.onSuccess { (next, left) ->
+                            vm.commit(next)
+                            done = if (kind == "topup") "Listo. Tu saldo es ${formatMoney(left)}." else "Pagado. Tu saldo es ${formatMoney(left)}."
+                        }.onFailure {
+                            error = it.message ?: "No se pudo confirmar."
+                        }
+                    }
                 }
             }
-            if (error.isNotEmpty()) Text(error, fontFamily = Sans, modifier = Modifier.padding(top = 8.dp))
             return@Column
         }
-        Text("Apunta al código de la manicura, o escríbelo.", color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp))
+        Text("Apunta al código de la manicura.", color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp))
         PrimaryButton("Abrir cámara") {
             scanner.launch(
                 ScanOptions().apply {
                     setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                     setPrompt("Apunta al código")
                     setBeepEnabled(false)
-                    setOrientationLocked(true)
                 },
             )
         }
         Spacer(Modifier.height(16.dp))
-        PaperField("Código", typed, { typed = it.uppercase() })
+        PaperField("Código", typed, { typed = it })
         if (error.isNotEmpty()) Text(error, fontFamily = Sans, modifier = Modifier.padding(top = 8.dp))
         Spacer(Modifier.height(12.dp))
-        PrimaryButton("Continuar") {
-            val id = previewCode(book, kind, typed)
-            if (id.isEmpty()) {
-                found = ""
-                error = messageFor(book, kind, typed)
-            } else {
-                error = ""
-                found = id
-            }
-        }
+        PrimaryButton("Continuar") { take(typed) }
     }
 }
 
@@ -337,7 +339,7 @@ fun ClientScreen(vm: StudioViewModel, id: String) {
             PrimaryButton("Recargar", Modifier.weight(1f)) { vm.open(Screen.Amount("topup", client.id)) }
             GhostButton("Cobrar", Modifier.weight(1f)) { vm.open(Screen.Amount("charge", client.id)) }
         }
-        MoveList(vm, "Movimientos", moves.map { it.kind to it }, LocalDate.now(), "Esta ficha todavía no tiene movimientos.")
+        MoveList("Movimientos", moves.map { it.kind to it }, LocalDate.now(), "Esta ficha todavía no tiene movimientos.")
         Spacer(Modifier.height(24.dp))
         if (confirming) {
             ButtonInk("Confirmar y eliminar") {
@@ -383,24 +385,6 @@ private fun ButtonInk(text: String, onClick: () -> Unit) {
     ) {
         Text(text, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
     }
-}
-
-private fun previewCode(book: com.studionails.beauty.model.BookState, kind: String, raw: String): String {
-    val id = readTicketCode(raw)
-    val match = book.tickets.find { it.id == id } ?: return ""
-    if (match.usedAt != null || match.kind != kind) return ""
-    if (match.phone.isNotEmpty() && digits(match.phone) != digits(book.clientPhone)) return ""
-    return id
-}
-
-private fun messageFor(book: com.studionails.beauty.model.BookState, kind: String, raw: String): String {
-    val id = readTicketCode(raw)
-    if (id.isEmpty()) return "Ese código no es de Studio Nails."
-    val match = book.tickets.find { it.id == id } ?: return "No encuentro ese código."
-    if (match.usedAt != null) return "Ese código ya se usó."
-    if (match.kind != kind) return if (kind == "topup") "Ese código es un cobro. Ábrelo en Pagar." else "Ese código es una recarga. Ábrelo en Recargar."
-    if (match.phone.isNotEmpty() && digits(match.phone) != digits(book.clientPhone)) return "Este código es para otra clienta."
-    return ""
 }
 
 private fun encodeQr(value: String): Bitmap {

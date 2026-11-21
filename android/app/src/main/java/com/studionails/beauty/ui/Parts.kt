@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -109,11 +109,13 @@ fun GhostButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
 
 @Composable
 fun ScreenTitle(title: String, onBack: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = androidx.compose.material3.MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
-        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.Outlined.Close, contentDescription = "Cerrar", tint = Accent)
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = onBack)) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Volver", tint = Soft)
+            Text(" Volver", color = Soft, fontFamily = Sans, fontSize = 16.sp)
         }
+        Spacer(Modifier.height(8.dp))
+        Text(title, style = androidx.compose.material3.MaterialTheme.typography.headlineLarge)
     }
 }
 
