@@ -82,6 +82,18 @@ data class WalletMove(
     val requestId: String = "",
 )
 
+data class HeldRedeem(
+    val requestId: String,
+    val id: String,
+    val kind: String,
+    val cents: Int,
+    val expiresAt: Long,
+    val nonce: String,
+    val host: String,
+    val phone: String,
+    val name: String,
+)
+
 data class Notice(
     val id: String,
     val role: Role,
@@ -105,6 +117,7 @@ data class BookState(
     val moves: List<WalletMove> = emptyList(),
     val confirmedBalance: Int = 0,
     val deskHost: String = "",
+    val heldRedeem: HeldRedeem? = null,
 )
 
 private val Months = listOf(
@@ -112,12 +125,22 @@ private val Months = listOf(
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 )
 private val Weekdays = listOf("domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado")
-private val TicketAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 private val Hour = 60 * 60 * 1000L
 private val Minute = 60 * 1000L
 private val random = SecureRandom()
 
 fun digits(phone: String) = phone.filter { it.isDigit() }
+
+fun phoneKey(phone: String): String {
+    val raw = digits(phone)
+    return if (raw.length == 11 && raw.startsWith("1")) raw.drop(1) else raw
+}
+
+fun samePhone(a: String, b: String): Boolean {
+    val left = phoneKey(a)
+    val right = phoneKey(b)
+    return left.length >= 10 && left == right
+}
 
 fun prettyPhone(phone: String): String {
     val raw = digits(phone)
@@ -463,15 +486,15 @@ fun unreadCount(state: BookState, now: Long): Int {
 }
 
 fun balanceOf(state: BookState, phone: String): Int {
-    val key = digits(phone)
+    val key = phoneKey(phone)
     if (key.isEmpty()) return 0
     return state.moves.fold(0) { sum, move ->
-        if (digits(move.phone) != key) sum else sum + if (move.kind == "topup") move.cents else -move.cents
+        if (phoneKey(move.phone) != key) sum else sum + if (move.kind == "topup") move.cents else -move.cents
     }
 }
 
 fun movesFor(state: BookState, phone: String? = null) = state.moves
-    .filter { phone == null || digits(it.phone) == digits(phone) }
+    .filter { phone == null || phoneKey(it.phone) == phoneKey(phone) }
     .sortedByDescending { it.at }
 
 fun qrPayload(id: String) = "SNB:$id"
@@ -485,28 +508,17 @@ fun readTicketCode(raw: String): String {
 
 fun addClient(state: BookState, name: String, phone: String): Result<BookState> {
     val cleanName = name.trim()
-    val cleanPhone = digits(phone)
+    val cleanPhone = phoneKey(phone)
     if (cleanName.length < 2) return Result.failure(IllegalArgumentException("Escribe el nombre."))
     if (cleanPhone.length < 10 || cleanPhone.length > 15) return Result.failure(IllegalArgumentException("El teléfono necesita 10 dígitos."))
-    if (state.clients.any { digits(it.phone) == cleanPhone }) return Result.failure(IllegalArgumentException("Esa clienta ya está en la lista."))
+    if (state.clients.any { phoneKey(it.phone) == cleanPhone }) return Result.failure(IllegalArgumentException("Esa clienta ya está en la lista."))
     return Result.success(state.copy(clients = state.clients + StudioClient(makeId(), cleanName, cleanPhone)))
 }
 
 fun removeClient(state: BookState, id: String) = state.copy(clients = state.clients.filter { it.id != id })
 
 fun createTicket(state: BookState, kind: String, cents: Int, phone: String, name: String, now: Long): Result<Pair<BookState, WalletTicket>> {
-    if (cents <= 0) return Result.failure(IllegalArgumentException("Escribe un valor en dólares."))
-    val cleanPhone = digits(phone)
-    if (phone.isNotBlank() && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
-        return Result.failure(IllegalArgumentException("El teléfono de la clienta no es válido."))
-    }
-    val used = state.tickets.map { it.id }.toMutableSet()
-    var id: String
-    do {
-        id = buildString(6) { repeat(6) { append(TicketAlphabet[random.nextInt(TicketAlphabet.length)]) } }
-    } while (!used.add(id))
-    val ticket = WalletTicket(id, kind, cents, cleanPhone, name.trim(), now)
-    return Result.success(state.copy(tickets = listOf(ticket) + state.tickets) to ticket)
+    return Result.failure(IllegalArgumentException("El código solo se crea en el teléfono de la manicura."))
 }
 
 fun redeemTicket(state: BookState, raw: String, expected: String, phone: String, name: String, now: Long): Result<Pair<BookState, Int>> {
@@ -648,6 +660,19 @@ fun BookState.toJson(): String {
     })
     root.put("confirmedBalance", confirmedBalance)
     root.put("deskHost", deskHost)
+    heldRedeem?.let { held ->
+        root.put("heldRedeem", JSONObject().apply {
+            put("requestId", held.requestId)
+            put("id", held.id)
+            put("kind", held.kind)
+            put("cents", held.cents)
+            put("expiresAt", held.expiresAt)
+            put("nonce", held.nonce)
+            put("host", held.host)
+            put("phone", held.phone)
+            put("name", held.name)
+        })
+    }
     return root.toString()
 }
 
@@ -720,6 +745,24 @@ fun parseBook(raw: String): BookState {
         },
         confirmedBalance = root.optInt("confirmedBalance"),
         deskHost = root.optString("deskHost"),
+        heldRedeem = root.optJSONObject("heldRedeem")?.toHeld(),
+    )
+}
+
+private fun JSONObject.toHeld(): HeldRedeem? {
+    val requestId = optString("requestId")
+    val id = optString("id")
+    if (requestId.isBlank() || id.isBlank()) return null
+    return HeldRedeem(
+        requestId = requestId,
+        id = id,
+        kind = optString("kind"),
+        cents = optInt("cents"),
+        expiresAt = optLong("expiresAt"),
+        nonce = optString("nonce"),
+        host = optString("host"),
+        phone = optString("phone"),
+        name = optString("name"),
     )
 }
 

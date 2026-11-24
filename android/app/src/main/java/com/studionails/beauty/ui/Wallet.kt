@@ -44,14 +44,16 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import com.studionails.beauty.model.HeldRedeem
 import com.studionails.beauty.model.Role
 import com.studionails.beauty.model.addClient
 import com.studionails.beauty.model.balanceOf
-import com.studionails.beauty.model.digits
 import com.studionails.beauty.model.formatMoney
 import com.studionails.beauty.model.movesFor
 import com.studionails.beauty.model.parseMoney
+import com.studionails.beauty.model.phoneKey
 import com.studionails.beauty.model.prettyPhone
+import com.studionails.beauty.model.readTicketCode
 import com.studionails.beauty.model.removeClient
 import com.studionails.beauty.model.whenLabel
 import com.studionails.beauty.qr.TicketClaim
@@ -69,13 +71,16 @@ fun WalletHome(vm: StudioViewModel) {
     if (role == Role.client) {
         val balance = if (vm.isDesk()) balanceOf(book, book.clientPhone) else book.confirmedBalance
         val moves = movesFor(book, book.clientPhone).take(8)
-        LaunchedEffect(book.deskHost) { vm.refreshBalance() }
+        LaunchedEffect(book.deskHost, book.heldRedeem?.requestId) {
+            vm.refreshBalance()
+            vm.retryHeld()
+        }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Billetera", style = androidx.compose.material3.MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Text("Saldo disponible", color = Soft, fontFamily = Sans, modifier = Modifier.padding(top = 28.dp))
             Text(formatMoney(balance), fontFamily = Display, fontSize = 56.sp)
             Text(
-                if (vm.isDesk()) "Este teléfono lleva la caja." else "Último saldo confirmado por la manicura.",
+                if (vm.isDesk()) "Este teléfono lleva la caja." else "Saldo confirmado por la manicura. Este teléfono no lo cambia.",
                 color = Soft,
                 fontFamily = Sans,
                 fontSize = 13.sp,
@@ -239,26 +244,51 @@ fun ScanScreen(vm: StudioViewModel, kind: String) {
     val book = vm.book
     var typed by remember { mutableStateOf("") }
     var claim by remember { mutableStateOf<TicketClaim?>(null) }
+    var quotedCents by remember { mutableStateOf<Int?>(null) }
     var phone by remember { mutableStateOf(prettyPhone(book.clientPhone)) }
     var requestId by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var done by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     fun take(raw: String) {
-        val parsed = parseTicketQr(raw)
+        val parsed = parseTicketQr(raw) ?: readTicketCode(raw).let { id ->
+            if (id.isEmpty()) null else TicketClaim(id, kind, 0, 0, "", book.deskHost)
+        }
         if (parsed == null) {
             claim = null
-            error = "Ese código hay que escanearlo. Las letras solas no alcanzan."
+            quotedCents = null
+            error = "Ese código no es de Studio Nails."
             return
         }
-        if (parsed.kind != kind) {
+        if (parsed.kind.isNotEmpty() && parsed.kind != kind) {
             claim = null
+            quotedCents = null
             error = if (kind == "topup") "Ese código es un cobro. Ábrelo en Pagar." else "Ese código es una recarga. Ábrelo en Recargar."
             return
         }
-        claim = parsed
+        claim = if (parsed.kind.isEmpty()) parsed.copy(kind = kind) else parsed
+        quotedCents = null
         requestId = UUID.randomUUID().toString()
         error = ""
+        busy = true
+        thread(name = "quote", isDaemon = true) {
+            val result = vm.quote(if (parsed.kind.isEmpty()) parsed.copy(kind = kind) else parsed)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                busy = false
+                result.onSuccess { quote ->
+                    if (quote.kind != kind) {
+                        claim = null
+                        error = if (kind == "topup") "Ese código es un cobro. Ábrelo en Pagar." else "Ese código es una recarga. Ábrelo en Recargar."
+                    } else {
+                        claim = (if (parsed.kind.isEmpty()) parsed.copy(kind = kind) else parsed).copy(cents = quote.cents, expiresAt = quote.expiresAt)
+                        quotedCents = quote.cents
+                    }
+                }.onFailure {
+                    claim = null
+                    error = it.message ?: "No se pudo leer el código."
+                }
+            }
+        }
     }
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents ?: return@rememberLauncherForActivityResult
@@ -271,35 +301,50 @@ fun ScanScreen(vm: StudioViewModel, kind: String) {
             Text(done, fontFamily = Display, fontSize = 36.sp, modifier = Modifier.padding(top = 24.dp))
             return@Column
         }
-        if (pending != null) {
+        if (pending != null && quotedCents != null) {
             Text(if (kind == "topup") "Recarga por confirmar" else "Cobro por confirmar", color = Soft, fontFamily = Sans, modifier = Modifier.padding(top = 20.dp))
-            Text(formatMoney(pending.cents), fontFamily = Display, fontSize = 56.sp)
-            Text("El teléfono de la manicura confirma el valor. Este aparato no lo cambia.", color = Soft, fontFamily = Sans, fontSize = 16.sp)
+            Text(formatMoney(quotedCents ?: pending.cents), fontFamily = Display, fontSize = 56.sp)
+            Text("Valor confirmado por la manicura. Este teléfono no cambia el saldo hasta que ella lo registre.", color = Soft, fontFamily = Sans, fontSize = 16.sp)
             Spacer(Modifier.height(16.dp))
             PaperField("Tu teléfono", phone, { phone = it }, KeyboardType.Phone)
             if (error.isNotEmpty()) Text(error, fontFamily = Sans, modifier = Modifier.padding(top = 8.dp))
             Spacer(Modifier.height(20.dp))
             PrimaryButton(if (busy) "Confirmando..." else if (kind == "topup") "Pedir recarga" else "Pedir cobro", enabled = !busy) {
-                if (digits(phone).length < 10) {
+                if (phoneKey(phone).length < 10) {
                     error = "Escribe tu teléfono, con 10 dígitos."
                     return@PrimaryButton
                 }
                 busy = true
                 error = ""
                 val id = requestId
+                val host = pending.host.ifBlank { book.deskHost }
+                val asked = pending.copy(host = host)
+                if (!vm.isDesk()) {
+                    vm.commit(
+                        book.copy(
+                            heldRedeem = HeldRedeem(id, asked.id, asked.kind, asked.cents, asked.expiresAt, asked.nonce, host, phone, book.clientName),
+                            deskHost = host.ifBlank { book.deskHost },
+                        ),
+                    )
+                }
                 thread(name = "redeem", isDaemon = true) {
-                    val result = vm.redeem(pending, phone, book.clientName, id)
+                    val result = vm.redeem(asked, phone, book.clientName, id)
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
                         busy = false
                         result.onSuccess { (next, left) ->
                             vm.commit(next)
                             done = if (kind == "topup") "Listo. Tu saldo es ${formatMoney(left)}." else "Pagado. Tu saldo es ${formatMoney(left)}."
                         }.onFailure {
+                            if (it.message?.startsWith("No llego") != true) vm.commit(vm.book.copy(heldRedeem = null))
                             error = it.message ?: "No se pudo confirmar."
                         }
                     }
                 }
             }
+            return@Column
+        }
+        if (pending != null && busy) {
+            Text("Consultando el teléfono de la manicura…", color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 24.dp))
             return@Column
         }
         Text("Apunta al código de la manicura.", color = Soft, fontFamily = Sans, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp))

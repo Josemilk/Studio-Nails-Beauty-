@@ -8,13 +8,16 @@ import com.studionails.beauty.model.Role
 import com.studionails.beauty.model.WalletMove
 import com.studionails.beauty.model.WalletTicket
 import com.studionails.beauty.model.balanceOf
-import com.studionails.beauty.model.digits
+import com.studionails.beauty.model.phoneKey
+import com.studionails.beauty.model.samePhone
 import com.studionails.beauty.qr.TicketClaim
 import java.security.SecureRandom
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 data class Redeemed(val state: BookState, val balance: Int, val move: WalletMove)
+
+data class DeskQuote(val cents: Int, val kind: String, val expiresAt: Long, val name: String)
 
 /**
  * Única puerta que puede crear un ticket o mover un saldo.
@@ -30,7 +33,7 @@ class DeskLedger(context: Context) {
 
     fun attach(state: BookState): BookState = lock.withLock {
         val writable = db.writableDatabase
-        if (!db.isDesk(writable) && (state.mode == Role.manicurist || state.tickets.isNotEmpty())) {
+        if (state.mode == Role.manicurist && !db.isDesk(writable)) {
             writable.beginTransaction()
             try {
                 adopt(writable, state)
@@ -53,9 +56,10 @@ class DeskLedger(context: Context) {
     fun isDesk(): Boolean = lock.withLock { db.isDesk() }
 
     fun issue(state: BookState, kind: String, cents: Int, phone: String, name: String, now: Long): Result<Pair<BookState, WalletTicket>> = lock.withLock {
+        if (state.mode != Role.manicurist) return Result.failure(IllegalArgumentException("Solo la manicura crea códigos."))
         if (cents <= 0) return Result.failure(IllegalArgumentException("Escribe un valor en dólares."))
         if (kind != "topup" && kind != "charge") return Result.failure(IllegalArgumentException("Ese movimiento no existe."))
-        val cleanPhone = digits(phone)
+        val cleanPhone = phoneKey(phone)
         if (phone.isNotBlank() && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
             return Result.failure(IllegalArgumentException("El teléfono de la clienta no es válido."))
         }
@@ -90,6 +94,13 @@ class DeskLedger(context: Context) {
         }
     }
 
+    fun quote(claim: TicketClaim, now: Long): Result<DeskQuote> = lock.withLock {
+        val ticket = db.ticket(db.readableDatabase, claim.id)
+            ?: return Result.failure(IllegalArgumentException("Ese código no está en este teléfono."))
+        checkTicket(ticket, claim, now).onFailure { return Result.failure(it) }
+        return Result.success(DeskQuote(ticket.cents, ticket.kind, expiresOf(ticket), ticket.name))
+    }
+
     fun redeem(claim: TicketClaim, phone: String, name: String, requestId: String, now: Long): Result<Redeemed> = lock.withLock {
         if (requestId.isBlank()) return Result.failure(IllegalArgumentException("Falta el identificador de la operación."))
         val writable = db.writableDatabase
@@ -103,22 +114,12 @@ class DeskLedger(context: Context) {
             }
             val ticket = db.ticket(writable, claim.id)
                 ?: return Result.failure(IllegalArgumentException("Ese código no está en este teléfono."))
-            if (ticket.nonce.isNotEmpty() && ticket.nonce != claim.nonce) {
-                return Result.failure(IllegalArgumentException("Ese código no coincide. Vuelve a escanear."))
-            }
-            if (ticket.kind != claim.kind) {
-                val message = if (claim.kind == "topup") "Ese código es un cobro. Ábrelo en Pagar." else "Ese código es una recarga. Ábrelo en Recargar."
-                return Result.failure(IllegalArgumentException(message))
-            }
-            if (ticket.expiresAt > 0 && now > ticket.expiresAt) {
-                return Result.failure(IllegalArgumentException("Ese código caducó. Pide uno nuevo."))
-            }
-            if (ticket.usedAt != null) return Result.failure(IllegalArgumentException("Ese código ya se usó."))
-            val mine = digits(phone)
+            checkTicket(ticket, claim, now).onFailure { return Result.failure(it) }
+            val mine = phoneKey(phone)
             if (mine.length < 10 || mine.length > 15) {
                 return Result.failure(IllegalArgumentException("Hace falta un teléfono de 10 dígitos."))
             }
-            if (ticket.phone.isNotEmpty() && digits(ticket.phone) != mine) {
+            if (ticket.phone.isNotEmpty() && !samePhone(ticket.phone, mine)) {
                 return Result.failure(IllegalArgumentException("Este código es para otra clienta."))
             }
             if (ticket.cents <= 0) return Result.failure(IllegalArgumentException("Ese código no tiene un valor válido."))
@@ -166,9 +167,30 @@ class DeskLedger(context: Context) {
     }
 
     private fun publish(state: BookState, writable: SQLiteDatabase): BookState {
-        val next = if (db.isDesk(writable)) state.copy(tickets = db.tickets(writable), moves = db.moves(writable)) else state
-        snapshot = next
+        val desk = state.mode == Role.manicurist && db.isDesk(writable)
+        val next = if (desk) state.copy(tickets = db.tickets(writable), moves = db.moves(writable)) else state
+        if (desk) snapshot = next
         return next
+    }
+
+    private fun checkTicket(ticket: WalletTicket, claim: TicketClaim, now: Long): Result<Unit> {
+        if (claim.nonce.isNotEmpty() && ticket.nonce.isNotEmpty() && ticket.nonce != claim.nonce) {
+            return Result.failure(IllegalArgumentException("Ese código no coincide. Vuelve a escanear."))
+        }
+        if (claim.kind.isNotEmpty() && ticket.kind != claim.kind) {
+            val message = if (claim.kind == "topup") "Ese código es un cobro. Ábrelo en Pagar." else "Ese código es una recarga. Ábrelo en Recargar."
+            return Result.failure(IllegalArgumentException(message))
+        }
+        if (claim.cents > 0 && claim.cents != ticket.cents) {
+            return Result.failure(IllegalArgumentException("El valor no coincide con el código. Vuelve a escanear."))
+        }
+        if (now > expiresOf(ticket)) return Result.failure(IllegalArgumentException("Ese código caducó. Pide uno nuevo."))
+        if (ticket.usedAt != null) return Result.failure(IllegalArgumentException("Ese código ya se usó."))
+        return Result.success(Unit)
+    }
+
+    private fun expiresOf(ticket: WalletTicket): Long {
+        return if (ticket.expiresAt > 0) ticket.expiresAt else ticket.createdAt + HalfHour
     }
 
     private fun nonce(): String = buildString(16) { repeat(16) { append(Alphabet[random.nextInt(Alphabet.length)]) } }

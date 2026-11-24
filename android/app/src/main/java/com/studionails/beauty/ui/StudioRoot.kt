@@ -52,7 +52,7 @@ import com.studionails.beauty.model.Role
 import com.studionails.beauty.model.Services
 import com.studionails.beauty.model.appointmentMinutes
 import com.studionails.beauty.model.clockLabel
-import com.studionails.beauty.model.digits
+import com.studionails.beauty.model.phoneKey
 import com.studionails.beauty.model.firedNotices
 import com.studionails.beauty.model.longDate
 import com.studionails.beauty.model.minutesToTime
@@ -286,7 +286,7 @@ private fun HistoryScreen(vm: StudioViewModel) {
     val book = vm.book
     val role = book.mode ?: Role.client
     val now = System.currentTimeMillis()
-    val source = if (role == Role.client) book.appointments.filter { digits(it.phone) == digits(book.clientPhone) } else book.appointments
+    val source = if (role == Role.client) book.appointments.filter { phoneKey(it.phone) == phoneKey(book.clientPhone) } else book.appointments
     val rows = source.filter { it.status == "cancelled" || stamp(it.date, it.time) + appointmentMinutes(book, it) * 60_000 < now }
         .sortedByDescending { stamp(it.date, it.time) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {

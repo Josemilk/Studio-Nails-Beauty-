@@ -19,7 +19,11 @@ import java.nio.charset.StandardCharsets
  * El teléfono de la manicura escucha en la red local.
  * La clienta no mueve su saldo: pide aquí que se confirme.
  */
-class DeskServer(private val ledger: DeskLedger, private val onChange: (com.studionails.beauty.model.BookState) -> Unit) {
+class DeskServer(
+    private val ledger: DeskLedger,
+    private val onChange: (com.studionails.beauty.model.BookState) -> Unit,
+    private val accepting: () -> Boolean = { true },
+) {
     @Volatile var port: Int = 0
         private set
     private var socket: ServerSocket? = null
@@ -106,6 +110,7 @@ class DeskServer(private val ledger: DeskLedger, private val onChange: (com.stud
     }
 
     private fun route(method: String, target: String, body: String): String {
+        if (!accepting()) return errorJson("Este teléfono no es la caja del estudio.")
         val path = target.substringBefore("?")
         if (method == "GET" && path == "/v1/wallet/balance") {
             val phone = query(target, "phone")
@@ -117,16 +122,26 @@ class DeskServer(private val ledger: DeskLedger, private val onChange: (com.stud
                 .put("moves", JSONArray().apply { moves.forEach { put(it.toJson()) } })
                 .toString()
         }
+        if (method == "POST" && path == "/v1/wallet/quote") {
+            val json = JSONObject(body.ifBlank { "{}" })
+            val claim = claimOf(json)
+            val result = ledger.quote(claim, System.currentTimeMillis())
+            return result.fold(
+                onSuccess = { quote ->
+                    JSONObject()
+                        .put("ok", true)
+                        .put("cents", quote.cents)
+                        .put("kind", quote.kind)
+                        .put("expiresAt", quote.expiresAt)
+                        .put("name", quote.name)
+                        .toString()
+                },
+                onFailure = { errorJson(it.message ?: "No se pudo leer el código.") },
+            )
+        }
         if (method == "POST" && path == "/v1/wallet/redeem") {
             val json = JSONObject(body.ifBlank { "{}" })
-            val claim = TicketClaim(
-                id = json.optString("id").uppercase(),
-                kind = json.optString("kind"),
-                cents = 0,
-                expiresAt = 0,
-                nonce = json.optString("nonce"),
-                host = "",
-            )
+            val claim = claimOf(json)
             val result = ledger.redeem(claim, json.optString("phone"), json.optString("name"), json.optString("requestId"), System.currentTimeMillis())
             return result.fold(
                 onSuccess = { redeemed ->
@@ -145,6 +160,15 @@ class DeskServer(private val ledger: DeskLedger, private val onChange: (com.stud
         }
         return errorJson("No existe esa ruta.")
     }
+
+    private fun claimOf(json: JSONObject) = TicketClaim(
+        id = json.optString("id").uppercase(),
+        kind = json.optString("kind"),
+        cents = json.optInt("cents"),
+        expiresAt = json.optLong("expiresAt"),
+        nonce = json.optString("nonce"),
+        host = "",
+    )
 
     private fun query(target: String, key: String): String {
         val query = target.substringAfter("?", "")

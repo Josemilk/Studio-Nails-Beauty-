@@ -2,6 +2,7 @@ package com.studionails.beauty.network
 
 import com.studionails.beauty.model.WalletMove
 import com.studionails.beauty.qr.TicketClaim
+import com.studionails.beauty.wallet.DeskQuote
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -19,12 +20,28 @@ object DeskClient {
             .put("id", claim.id)
             .put("nonce", claim.nonce)
             .put("kind", claim.kind)
+            .put("cents", claim.cents)
             .put("phone", phone)
             .put("name", name)
             .put("requestId", requestId)
         val response = post("$host/v1/wallet/redeem", body) 
         return response.fold(
             onSuccess = { json -> readReceipt(json) },
+            onFailure = { Result.failure(it) },
+        )
+    }
+
+    fun quote(host: String, claim: TicketClaim): Result<DeskQuote> {
+        val body = JSONObject()
+            .put("id", claim.id)
+            .put("nonce", claim.nonce)
+            .put("kind", claim.kind)
+        val response = post("$host/v1/wallet/quote", body)
+        return response.fold(
+            onSuccess = { json ->
+                if (!json.optBoolean("ok")) Result.failure(IllegalArgumentException(json.optString("error", "No se pudo leer el código.")))
+                else Result.success(DeskQuote(json.optInt("cents"), json.optString("kind"), json.optLong("expiresAt"), json.optString("name")))
+            },
             onFailure = { Result.failure(it) },
         )
     }
